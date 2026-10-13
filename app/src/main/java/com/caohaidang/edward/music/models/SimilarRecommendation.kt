@@ -1,0 +1,9 @@
+package com.caohaidang.edward.music.models
+
+import com.caohaidang.edward.innertube.models.YTItem
+import com.caohaidang.edward.music.db.entities.LocalItem
+
+data class SimilarRecommendation(
+    val title: LocalItem,
+    val items: List<YTItem>,
+)
