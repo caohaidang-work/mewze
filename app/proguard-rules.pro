@@ -79,3 +79,28 @@
 -keep class com.my.kizzy.remote.** { <fields>; }
 # Keep Gateway data classes
 -keep class com.my.kizzy.gateway.entities.** { <fields>; }
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn jdk.dynalink.**
+-dontwarn org.mozilla.javascript.**
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.ClassFileWriter
+
+# --- NewPipeExtractor (stream URL resolving; used when playing a song) ---
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keep class org.schabi.newpipe.extractor.timeago.patterns.** { *; }
+-keep class com.grack.nanojson.** { *; }
+-keep class org.jsoup.** { *; }
+-dontwarn org.jsoup.**
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
+-dontwarn com.google.protobuf.**
+
+# --- Ktor / OkHttp / Media3 are looked up reflectively or via ServiceLoader ---
+-keep class io.ktor.client.engine.okhttp.** { *; }
+-keep class kotlin.coroutines.Continuation
+-dontwarn io.ktor.**
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Keep line numbers so crash reports from release builds are readable.
+-keepattributes SourceFile,LineNumberTable

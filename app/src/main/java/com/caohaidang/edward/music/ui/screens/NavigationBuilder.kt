@@ -13,6 +13,12 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.datastore.preferences.core.edit
+import com.caohaidang.edward.music.constants.OnboardingDoneKey
+import com.caohaidang.edward.music.utils.dataStore
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.navigation.NavGraphBuilder
@@ -24,10 +30,8 @@ import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
 import com.caohaidang.edward.music.ui.screens.artist.ArtistItemsScreen
 import com.caohaidang.edward.music.ui.screens.artist.ArtistScreen
 import com.caohaidang.edward.music.ui.screens.artist.ArtistSongsScreen
-import com.caohaidang.edward.music.ui.screens.library.LibraryAlbumsScreen
-import com.caohaidang.edward.music.ui.screens.library.LibraryArtistsScreen
-import com.caohaidang.edward.music.ui.screens.library.LibraryPlaylistsScreen
-import com.caohaidang.edward.music.ui.screens.library.LibrarySongsScreen
+import com.caohaidang.edward.music.ui.screens.library.LibrarySection
+import com.caohaidang.edward.music.ui.screens.library.LibrarySectionScreen
 import com.caohaidang.edward.music.ui.screens.library.UnifiedLibraryScreen
 import com.caohaidang.edward.music.ui.screens.playlist.LocalPlaylistScreen
 import com.caohaidang.edward.music.ui.screens.playlist.OnlinePlaylistScreen
@@ -54,20 +58,54 @@ fun NavGraphBuilder.navigationBuilder(
     composable(Screens.Account.route) {
         MainTabInsets { AccountScreen(navController = navController, scrollBehavior = scrollBehavior) }
     }
+    composable(Screens.Welcome.route) {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        WelcomeScreen(
+            onSignIn = { navController.navigate(Screens.Login.route) },
+            onSkip = {
+                scope.launch {
+                    context.dataStore.edit { it[OnboardingDoneKey] = true }
+                    navController.navigate(Screens.Home.route) {
+                        popUpTo(Screens.Welcome.route) { inclusive = true }
+                    }
+                }
+            }
+        )
+    }
     composable(Screens.Login.route) {
-        LoginScreen(navController = navController)
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        LoginScreen(
+            navController = navController,
+            onLoggedIn = {
+                scope.launch {
+                    // Save first, then navigate: leaving the screen cancels this scope.
+                    context.dataStore.edit { it[OnboardingDoneKey] = true }
+                    val cameFromWelcome =
+                        runCatching { navController.getBackStackEntry(Screens.Welcome.route) }.isSuccess
+                    if (cameFromWelcome) {
+                        navController.navigate(Screens.Home.route) {
+                            popUpTo(Screens.Welcome.route) { inclusive = true }
+                        }
+                    } else {
+                        navController.navigateUp()
+                    }
+                }
+            }
+        )
     }
     composable(Screens.Songs.route) {
-        LibrarySongsScreen(navController)
+        MainTabInsets { LibrarySectionScreen(navController, LibrarySection.SONGS) }
     }
     composable(Screens.Artists.route) {
-        LibraryArtistsScreen(navController)
+        MainTabInsets { LibrarySectionScreen(navController, LibrarySection.ARTISTS) }
     }
     composable(Screens.Albums.route) {
-        LibraryAlbumsScreen(navController)
+        MainTabInsets { LibrarySectionScreen(navController, LibrarySection.ALBUMS) }
     }
     composable(Screens.Playlists.route) {
-        LibraryPlaylistsScreen(navController)
+        MainTabInsets { LibrarySectionScreen(navController, LibrarySection.PLAYLISTS) }
     }
     composable("history") {
         HistoryScreen(navController)
@@ -147,7 +185,7 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistSongsScreen(navController, scrollBehavior)
     }
     composable(
-        route = "artist/{artistId}/items?browseId={browseId}?params={params}",
+        route = "artist/{artistId}/items?browseId={browseId}&params={params}",
         arguments = listOf(
             navArgument("artistId") {
                 type = NavType.StringType
@@ -155,10 +193,12 @@ fun NavGraphBuilder.navigationBuilder(
             navArgument("browseId") {
                 type = NavType.StringType
                 nullable = true
+                defaultValue = null
             },
             navArgument("params") {
                 type = NavType.StringType
                 nullable = true
+                defaultValue = null
             }
         )
     ) {

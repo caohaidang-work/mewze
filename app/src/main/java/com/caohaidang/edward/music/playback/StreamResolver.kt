@@ -79,7 +79,7 @@ object StreamResolver {
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "StreamFixer exception",
@@ -111,7 +111,7 @@ object StreamResolver {
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "Original InnerTune resolver exception",
@@ -292,7 +292,7 @@ object StreamResolver {
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "resolveWithInnerTune failed",

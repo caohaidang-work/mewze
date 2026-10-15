@@ -33,13 +33,15 @@ data class ArtistItemsPage(
                 album = renderer.flexColumns.getOrNull(3)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.let {
                     Album(
                         name = it.text,
-                        id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return null
+                        // A song whose album has no link used to make the whole song vanish.
+                        id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null
                     )
                 },
+                // Missing duration is fine; dropping the song (old behaviour) emptied "top songs" pages.
                 duration = renderer.fixedColumns?.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer?.text
                     ?.runs?.firstOrNull()
-                    ?.text?.parseTime() ?: return null,
+                    ?.text?.parseTime(),
                 thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"

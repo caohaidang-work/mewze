@@ -315,6 +315,20 @@ interface DatabaseDao {
     @Query("SELECT id FROM album")
     fun allAlbumIds(): List<String>
 
+    /** Albums of every song the user has played, liked or saved. */
+    @Query("SELECT DISTINCT albumId FROM song WHERE albumId IS NOT NULL AND (totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL)")
+    fun heardAlbumIds(): List<String>
+
+    /** Titles of everything the user has listened to (songs and their albums), used to hide re-releases and singles. */
+    @Query("""
+        SELECT title FROM song WHERE totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL
+        UNION
+        SELECT albumName FROM song WHERE albumName IS NOT NULL AND (totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL)
+        UNION
+        SELECT title FROM album WHERE bookmarkedAt IS NOT NULL
+    """)
+    fun heardTitles(): List<String>
+
     @Query(
         """
         SELECT songId AS id, COUNT(*) AS playCount, SUM(playTime) AS playTime
@@ -335,6 +349,7 @@ interface DatabaseDao {
                        FROM event
                        WHERE timestamp >= :from AND timestamp < :to
                        GROUP BY songId) AS e ON song_artist_map.songId = e.songId
+        WHERE song_artist_map.artistId LIKE 'UC%' OR song_artist_map.position = 0
         GROUP BY song_artist_map.artistId
         ORDER BY playTime DESC
         LIMIT :limit

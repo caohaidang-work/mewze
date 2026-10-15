@@ -2,6 +2,8 @@ package com.caohaidang.edward.music.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.caohaidang.edward.innertube.YouTube
+import com.caohaidang.edward.innertube.models.ArtistItem
 import com.caohaidang.edward.music.constants.WrappedPeriod
 import com.caohaidang.edward.music.constants.toDbMillis
 import com.caohaidang.edward.music.db.MusicDatabase
@@ -84,6 +86,18 @@ class WrappedViewModel @Inject constructor(
         refreshTick.value += 1
     }
 
+    /** Lấy ảnh đúng của nghệ sĩ khi DB chưa có (không dùng ảnh bài hát thay thế). */
+    private suspend fun resolveArtistThumbnail(id: String, name: String): String? = runCatching {
+        if (id.startsWith("UC")) {
+            YouTube.artist(id).getOrNull()?.artist?.thumbnail
+        } else {
+            YouTube.search(name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                ?.items?.filterIsInstance<ArtistItem>()
+                ?.firstOrNull { it.title.equals(name, ignoreCase = true) }
+                ?.thumbnail
+        }
+    }.getOrNull()
+
     private suspend fun load(period: WrappedPeriod, offset: Int): WrappedData = withContext(Dispatchers.IO) {
         val (start, end) = period.range(offset)
         val from = start.toDbMillis()
@@ -95,7 +109,11 @@ class WrappedViewModel @Inject constructor(
         }
         val artists = database.topArtistRanks(from, to, 5).mapNotNull { rank ->
             database.artist(rank.id).first()?.let {
-                WrappedArtist(it.artist.name, it.artist.thumbnailUrl, rank.playTime)
+                val thumb = it.artist.thumbnailUrl?.takeIf { url -> url.isNotBlank() }
+                    ?: resolveArtistThumbnail(it.artist.id, it.artist.name)?.also { url ->
+                        database.query { update(it.artist.copy(thumbnailUrl = url)) }
+                    }
+                WrappedArtist(it.artist.name, thumb, rank.playTime)
             }
         }
         val day = database.busiestDay(from, to)?.let { runCatching { LocalDate.parse(it.id) }.getOrNull() }

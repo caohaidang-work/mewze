@@ -4,6 +4,23 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import com.caohaidang.edward.music.constants.ArtistFilter
+import com.caohaidang.edward.music.constants.ArtistFilterKey
+import com.caohaidang.edward.music.ui.component.glassCard
+import com.caohaidang.edward.music.ui.menu.ArtistMenu
+import com.caohaidang.edward.music.ui.screens.Screens
+import com.caohaidang.edward.music.viewmodels.LibraryArtistsViewModel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,12 +106,110 @@ import com.caohaidang.edward.music.ui.menu.PlaylistMenu
 import com.caohaidang.edward.music.ui.menu.SongMenu
 import com.caohaidang.edward.music.utils.rememberEnumPreference
 
-private enum class LibraryTab(val label: String) {
+enum class LibrarySection(val title: String) {
     ALBUMS("Album yêu thích"),
     SONGS("Bài hát yêu thích"),
     PLAYLISTS("Playlist"),
+    ARTISTS("Nghệ sĩ"),
 }
 
+/** Small rounded "glass" capsule used for the header buttons (back, view toggle, more). */
+@Composable
+private fun GlassPill(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier
+            .height(38.dp)
+            .glassCard(CircleShape)
+            .clip(CircleShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 12.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun PillIconButton(@androidx.annotation.DrawableRes icon: Int, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+    ) {
+        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** "‹ Thư viện" on the left, a capsule with actions on the right, then the large title. */
+@Composable
+private fun SectionHeader(
+    navController: NavController,
+    title: String,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+        ) {
+            GlassPill(onClick = navController::navigateUp) {
+                Icon(painterResource(R.drawable.arrow_back), null, Modifier.size(18.dp))
+                Text("Thư viện", style = MaterialTheme.typography.labelLarge)
+            }
+            GlassPill(content = actions)
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 10.dp)
+        )
+    }
+}
+
+@Composable
+private fun HubRow(@androidx.annotation.DrawableRes icon: Int, label: String, onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 60.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+/** Library home: a plain list of sections followed by what was added recently. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UnifiedLibraryScreen(
@@ -116,15 +231,236 @@ fun UnifiedLibraryScreen(
     val playlists by remember(database) { database.playlists(PlaylistSortType.CREATE_DATE, true) }
         .collectAsState(initial = emptyList())
 
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.ALBUMS) }
+    var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+
+    if (showCreatePlaylistDialog) {
+        TextFieldDialog(
+            icon = { Icon(painter = painterResource(R.drawable.add), contentDescription = null) },
+            title = { Text(text = stringResource(R.string.create_playlist)) },
+            onDismiss = { showCreatePlaylistDialog = false },
+            onDone = { playlistName ->
+                database.query {
+                    insert(PlaylistEntity(name = playlistName))
+                }
+            }
+        )
+    }
+
+    val playSongs: (List<Song>, Int) -> Unit = { songs, startIndex ->
+        playerConnection.playQueue(
+            ListQueue(
+                title = context.getString(R.string.queue_all_songs),
+                items = songs.map { it.toMediaItem() },
+                startIndex = startIndex
+            )
+        )
+    }
+
+    // A few of each kind, interleaved, so the grid reads as "recently added".
+    val recent: List<Any> = remember(likedAlbums, likedSongs, playlists) {
+        buildList {
+            val p = playlists.take(3)
+            val a = likedAlbums.take(3)
+            val s = likedSongs.take(3)
+            for (i in 0 until 3) {
+                p.getOrNull(i)?.let(::add)
+                a.getOrNull(i)?.let(::add)
+                s.getOrNull(i)?.let(::add)
+            }
+        }
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(key = "title", span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp)
+            ) {
+                Text(
+                    text = "Thư viện",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Box {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .glassCard(CircleShape)
+                            .clip(CircleShape)
+                            .clickable { showMoreMenu = true }
+                    ) {
+                        Icon(painterResource(R.drawable.more_horiz), contentDescription = null)
+                    }
+                    DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Tạo playlist") },
+                            leadingIcon = { Icon(painterResource(R.drawable.add), null) },
+                            onClick = {
+                                showMoreMenu = false
+                                showCreatePlaylistDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Lịch sử nghe") },
+                            leadingIcon = { Icon(painterResource(R.drawable.history), null) },
+                            onClick = {
+                                showMoreMenu = false
+                                navController.navigate("history")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "hub", span = { GridItemSpan(maxLineSpan) }) {
+            Column {
+                HubRow(R.drawable.queue_music, "Playlist") { navController.navigate(Screens.Playlists.route) }
+                HubRow(R.drawable.artist, "Nghệ sĩ") { navController.navigate(Screens.Artists.route) }
+                HubRow(R.drawable.music_note, "Bài hát") { navController.navigate(Screens.Songs.route) }
+                HubRow(R.drawable.album, "Album") { navController.navigate(Screens.Albums.route) }
+            }
+        }
+
+        if (recent.isNotEmpty()) {
+            item(key = "recent_title", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "Mới thêm gần đây",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp)
+                )
+            }
+        }
+
+        items(count = recent.size, key = { i ->
+            when (val item = recent[i]) {
+                is Playlist -> "recent_playlist_${item.id}"
+                is Album -> "recent_album_${item.id}"
+                is Song -> "recent_song_${item.id}"
+                else -> "recent_$i"
+            }
+        }) { index ->
+            when (val item = recent[index]) {
+                is Playlist -> PlaylistGridItem(
+                    playlist = item,
+                    fillMaxWidth = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { navController.navigate("local_playlist/${item.id}") },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    PlaylistMenu(
+                                        playlist = item,
+                                        coroutineScope = coroutineScope,
+                                        onDismiss = menuState::dismiss
+                                    )
+                                }
+                            }
+                        )
+                )
+
+                is Album -> AlbumGridItem(
+                    album = item,
+                    isActive = item.id == mediaMetadata?.album?.id,
+                    isPlaying = isPlaying,
+                    coroutineScope = coroutineScope,
+                    fillMaxWidth = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { navController.navigate("album/${item.id}") },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    AlbumMenu(
+                                        originalAlbum = item,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss
+                                    )
+                                }
+                            }
+                        )
+                )
+
+                is Song -> SongGridItem(
+                    song = item,
+                    isActive = item.id == mediaMetadata?.id,
+                    isPlaying = isPlaying,
+                    fillMaxWidth = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = {
+                                if (item.id == mediaMetadata?.id) {
+                                    playerConnection.player.togglePlayPause()
+                                } else {
+                                    playSongs(likedSongs, likedSongs.indexOf(item).coerceAtLeast(0))
+                                }
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    SongMenu(
+                                        originalSong = item,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss
+                                    )
+                                }
+                            }
+                        )
+                )
+            }
+        }
+    }
+}
+
+/** One page of the library (liked albums, liked songs, playlists), styled like the library home. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun LibrarySectionScreen(
+    navController: NavController,
+    section: LibrarySection,
+) {
+    if (section == LibrarySection.ARTISTS) {
+        LibraryArtistsSection(navController)
+        return
+    }
+
+    val context = LocalContext.current
+    val database = LocalDatabase.current
+    val menuState = LocalMenuState.current
+    val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+
+    val likedAlbums by remember(database) { database.albumsLiked(AlbumSortType.CREATE_DATE, true) }
+        .collectAsState(initial = emptyList())
+    val likedSongs by remember(database) { database.likedSongs(SongSortType.CREATE_DATE, true) }
+        .collectAsState(initial = emptyList())
+    val playlists by remember(database) { database.playlists(PlaylistSortType.CREATE_DATE, true) }
+        .collectAsState(initial = emptyList())
+
+    // List / grid choice is remembered (shared by albums, songs and playlists).
     var viewType by rememberEnumPreference(LibraryTabViewTypeKey, LibraryViewType.GRID)
     val gridCellSize by rememberEnumPreference(GridCellSizeKey, GridCellSize.SMALL)
     val isGrid = viewType == LibraryViewType.GRID
 
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
-
-    LaunchedEffect(tab) { gridState.scrollToItem(0) }
 
     if (showCreatePlaylistDialog) {
         TextFieldDialog(
@@ -188,85 +524,64 @@ fun UnifiedLibraryScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier.fillMaxSize()
         ) {
-            item(key = "title", span = { GridItemSpan(maxLineSpan) }) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 8.dp, top = 8.dp)
-                ) {
-                    Text(
-                        text = "Thư viện",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                SectionHeader(navController = navController, title = section.title) {
+                    PillIconButton(
+                        icon = if (isGrid) R.drawable.grid_view else R.drawable.list,
+                        onClick = { viewType = viewType.toggle() }
                     )
-                    IconButton(onClick = { viewType = viewType.toggle() }) {
-                        Icon(
-                            painter = painterResource(
-                                if (isGrid) R.drawable.grid_view else R.drawable.list
-                            ),
-                            contentDescription = null
-                        )
+                    if (section == LibrarySection.PLAYLISTS) {
+                        PillIconButton(icon = R.drawable.add, onClick = { showCreatePlaylistDialog = true })
                     }
                 }
             }
 
-            item(key = "tabs", span = { GridItemSpan(maxLineSpan) }) {
-                ChipsRow(
-                    chips = LibraryTab.entries.map { it to it.label },
-                    currentValue = tab,
-                    onValueUpdate = { tab = it }
-                )
-            }
-
-            item(key = "actions_${tab.name}", span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "actions_${section.name}", span = { GridItemSpan(maxLineSpan) }) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    val countText = when (tab) {
-                        LibraryTab.ALBUMS -> pluralStringResource(R.plurals.n_album, likedAlbums.size, likedAlbums.size)
-                        LibraryTab.SONGS -> pluralStringResource(R.plurals.n_song, likedSongs.size, likedSongs.size)
-                        LibraryTab.PLAYLISTS -> pluralStringResource(R.plurals.n_playlist, playlists.size, playlists.size)
-                    }
-                    Text(
-                        text = countText,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    when (tab) {
-                        LibraryTab.SONGS -> if (likedSongs.isNotEmpty()) {
-                            FilledTonalButton(onClick = { playSongs(likedSongs, 0) }) {
+                    when (section) {
+                        LibrarySection.SONGS -> if (likedSongs.isNotEmpty()) {
+                            FilledTonalButton(
+                                onClick = { playSongs(likedSongs, 0) },
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(painterResource(R.drawable.play), null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(stringResource(R.string.play))
                             }
-                            OutlinedButton(onClick = { playSongs(likedSongs.shuffled(), 0) }) {
+                            FilledTonalButton(
+                                onClick = { playSongs(likedSongs.shuffled(), 0) },
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(painterResource(R.drawable.shuffle), null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(stringResource(R.string.shuffle))
                             }
                         }
 
-                        LibraryTab.PLAYLISTS -> FilledTonalButton(onClick = { showCreatePlaylistDialog = true }) {
-                            Icon(painterResource(R.drawable.add), null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Tạo playlist")
+                        else -> {
+                            val countText = when (section) {
+                                LibrarySection.ALBUMS -> pluralStringResource(R.plurals.n_album, likedAlbums.size, likedAlbums.size)
+                                else -> pluralStringResource(R.plurals.n_playlist, playlists.size, playlists.size)
+                            }
+                            Text(
+                                text = countText,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-
-                        LibraryTab.ALBUMS -> Unit
                     }
                 }
             }
 
-            when (tab) {
-                LibraryTab.ALBUMS -> albumsContent(
+            when (section) {
+                LibrarySection.ALBUMS -> albumsContent(
                     albums = likedAlbums,
                     isGrid = isGrid,
                     activeAlbumId = mediaMetadata?.album?.id,
@@ -280,7 +595,7 @@ fun UnifiedLibraryScreen(
                     }
                 )
 
-                LibraryTab.SONGS -> songsContent(
+                LibrarySection.SONGS -> songsContent(
                     songs = likedSongs,
                     isGrid = isGrid,
                     activeSongId = mediaMetadata?.id,
@@ -299,7 +614,7 @@ fun UnifiedLibraryScreen(
                     }
                 )
 
-                LibraryTab.PLAYLISTS -> playlistsContent(
+                LibrarySection.PLAYLISTS -> playlistsContent(
                     playlists = playlists,
                     isGrid = isGrid,
                     onCreate = { showCreatePlaylistDialog = true },
@@ -310,6 +625,103 @@ fun UnifiedLibraryScreen(
                         showPlaylistMenu(it)
                     }
                 )
+
+                LibrarySection.ARTISTS -> Unit
+            }
+        }
+    }
+}
+
+/** Artists page: round avatars in a plain list with chevrons, keeping the library/liked filter. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryArtistsSection(
+    navController: NavController,
+    viewModel: LibraryArtistsViewModel = hiltViewModel(),
+) {
+    val menuState = LocalMenuState.current
+    val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+    var filter by rememberEnumPreference(ArtistFilterKey, ArtistFilter.LIBRARY)
+    val artists by viewModel.allArtists.collectAsState()
+
+    LazyColumn(
+        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(key = "header") {
+            SectionHeader(navController = navController, title = LibrarySection.ARTISTS.title) {}
+        }
+        item(key = "filter") {
+            ChipsRow(
+                chips = listOf(
+                    ArtistFilter.LIBRARY to stringResource(R.string.filter_library),
+                    ArtistFilter.LIKED to stringResource(R.string.filter_liked)
+                ),
+                currentValue = filter,
+                onValueUpdate = { filter = it }
+            )
+        }
+        artists?.let { list ->
+            if (list.isEmpty()) {
+                item(key = "empty") {
+                    EmptyPlaceholder(
+                        icon = R.drawable.artist,
+                        text = stringResource(R.string.library_artist_empty)
+                    )
+                }
+            }
+            items(items = list, key = { it.id }) { artist ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { navController.navigate("artist/${artist.id}") },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    ArtistMenu(
+                                        originalArtist = artist,
+                                        coroutineScope = coroutineScope,
+                                        onDismiss = menuState::dismiss
+                                    )
+                                }
+                            }
+                        )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                    ) {
+                        AsyncImage(
+                            model = artist.artist.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Text(
+                            text = artist.artist.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.navigate_next),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 74.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
             }
         }
     }

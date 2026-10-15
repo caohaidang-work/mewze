@@ -38,6 +38,21 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
 import com.caohaidang.edward.music.LocalDatabase
 import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
@@ -88,91 +103,32 @@ fun SearchTabScreen(
         }
     }
 
+    val density = LocalDensity.current
+    val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val playerBottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+    val bottomPadding = if (imeBottom > playerBottom) imeBottom else playerBottom
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
-        TextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            placeholder = {
-                Text(
-                    when (searchSource) {
-                        SearchSource.ONLINE -> "Tìm bài hát, album, nghệ sĩ…"
-                        SearchSource.LOCAL -> "Tìm trong thư viện của bạn…"
-                    }
-                )
-            },
-            leadingIcon = {
-                Icon(painter = painterResource(R.drawable.search), contentDescription = null)
-            },
-            trailingIcon = {
-                if (query.text.isNotEmpty()) {
-                    IconButton(onClick = { query = TextFieldValue("") }) {
-                        Icon(painter = painterResource(R.drawable.close), contentDescription = null)
-                    }
-                }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(
-                onSearch = {
-                    when (searchSource) {
-                        SearchSource.ONLINE -> doSearch(query.text)
-                        SearchSource.LOCAL -> focusManager.clearFocus()
-                    }
-                }
-            ),
-            shape = RoundedCornerShape(28.dp),
-            colors = TextFieldDefaults.colors(
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-                errorIndicatorColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
-                .glassCard(RoundedCornerShape(28.dp), tintAlpha = 0.60f)
-                .focusRequester(focusRequester)
-        )
-
-        ChipsRow(
-            chips = listOf(
+        SearchSourceSwitcher(
+            options = listOf(
                 SearchSource.ONLINE to "YouTube Music",
                 SearchSource.LOCAL to "Thư viện",
             ),
-            currentValue = searchSource,
-            onValueUpdate = { searchSource = it },
-            containerColor = MaterialTheme.colorScheme.surface,
+            selected = searchSource,
+            onSelect = { searchSource = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         )
-
-        if (query.text.isEmpty() && searchSource == SearchSource.ONLINE && history.isNotEmpty()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 8.dp, top = 8.dp)
-            ) {
-                Text(
-                    text = "Tìm kiếm gần đây",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = { database.query { clearSearchHistory() } }) {
-                    Text("Xóa tất cả")
-                }
-            }
-        }
 
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding())
         ) {
             Crossfade(targetState = searchSource, label = "searchSource") { source ->
                 when (source) {
@@ -190,6 +146,130 @@ fun SearchTabScreen(
                         onDismiss = { focusManager.clearFocus() }
                     )
                 }
+            }
+        }
+
+        // Thanh tìm kiếm nằm dưới cùng, ngay trên bàn phím
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding + 8.dp)
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        when (searchSource) {
+                            SearchSource.ONLINE -> doSearch(query.text)
+                            SearchSource.LOCAL -> focusManager.clearFocus()
+                        }
+                    }
+                ),
+                decorationBox = { inner ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (query.text.isEmpty()) {
+                                Text(
+                                    text = when (searchSource) {
+                                        SearchSource.ONLINE -> "Tìm bài hát, album, nghệ sĩ…"
+                                        SearchSource.LOCAL -> "Tìm trong thư viện của bạn…"
+                                    },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            inner()
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .focusRequester(focusRequester)
+            )
+
+            Spacer(Modifier.width(10.dp))
+
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable {
+                        if (query.text.isNotEmpty()) query = TextFieldValue("")
+                        else focusManager.clearFocus()
+                    }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.close),
+                    contentDescription = "Xóa",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Công tắc dạng viên thuốc (segmented control) để đổi nguồn tìm kiếm. */
+@Composable
+private fun SearchSourceSwitcher(
+    options: List<Pair<SearchSource, String>>,
+    selected: SearchSource,
+    onSelect: (SearchSource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(3.dp)
+    ) {
+        options.forEach { (value, label) ->
+            val isSelected = value == selected
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
+                    )
+                    .clickable { onSelect(value) }
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

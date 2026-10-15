@@ -63,7 +63,7 @@ fun GlassNavigationBar(
                 .fillMaxWidth()
                 .padding(top = NavMiniPlayerGap)
                 .height(56.dp)
-                .glassSurface(shape = CircleShape, shadowElevation = 16.dp, opaque = true)
+                .glassSurface(shape = CircleShape, tintAlpha = 0.20f, shadowElevation = 6.dp)
                 .padding(5.dp)
         ) {
             items.forEach { screen ->

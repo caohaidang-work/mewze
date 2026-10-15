@@ -305,9 +305,7 @@ object StreamFixer {
             e: CancellationException
         ) {
             throw e
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "========== NEWPIPE FAILED ==========",
@@ -375,9 +373,7 @@ object StreamFixer {
             e: CancellationException
         ) {
             throw e
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "========== IOS INNERTUBE FAILED ==========",
@@ -442,9 +438,7 @@ object StreamFixer {
             e: CancellationException
         ) {
             throw e
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "========== ANDROID VR FAILED ==========",
@@ -813,9 +807,7 @@ object StreamFixer {
             e: CancellationException
         ) {
             throw e
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Throwable) {
             Log.e(
                 TAG,
                 "fetchInnertubeStream failed",

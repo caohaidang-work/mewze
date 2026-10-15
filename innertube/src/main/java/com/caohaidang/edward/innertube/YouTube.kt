@@ -653,12 +653,23 @@ object YouTube {
 
     suspend fun likedPlaylists(): Result<List<PlaylistItem>> = runCatching {
         val response = innerTube.browse(client = WEB_REMIX, browseId = "FEmusic_liked_playlists", setLogin = true).body<BrowseResponse>()
+        val grid = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents
+            ?.firstNotNullOfOrNull { it.gridRenderer }
 
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()?.gridRenderer?.items
-            ?.drop(1)
-            ?.mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-            ?.mapNotNull { ArtistItemsPage.fromMusicTwoRowItemRenderer(it) as? PlaylistItem }
-            .orEmpty()
+        // The first tile is the "New playlist" button.
+        val items = grid?.items.orEmpty().drop(1).toMutableList()
+        var continuation = grid?.continuations?.getContinuation()
+        var pages = 0
+        while (continuation != null && pages++ < MAX_LIBRARY_PAGES) {
+            val next = innerTube.browse(client = WEB_REMIX, continuation = continuation, setLogin = true)
+                .body<BrowseResponse>().continuationContents?.gridContinuation ?: break
+            items += next.items
+            continuation = next.continuations?.getContinuation()
+        }
+
+        items.mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
+            .mapNotNull { ArtistItemsPage.fromMusicTwoRowItemRenderer(it) as? PlaylistItem }
     }
 
     private const val MAX_LIBRARY_PAGES = 30
@@ -906,6 +917,15 @@ object YouTube {
         innerTube.editPlaylist(
             WEB_REMIX, playlistId,
             items.map { (videoId, setVideoId) -> EditPlaylistBody.Action.remove(videoId, setVideoId) }
+        )
+        true
+    }
+
+    /** Applies [moves] (setVideoId to successorSetVideoId) in order, in a single request. */
+    suspend fun reorderPlaylist(playlistId: String, moves: List<Pair<String, String>>): Result<Boolean> = runCatching {
+        innerTube.editPlaylist(
+            WEB_REMIX, playlistId,
+            moves.map { (setVideoId, successor) -> EditPlaylistBody.Action.moveBefore(setVideoId, successor) }
         )
         true
     }

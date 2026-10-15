@@ -16,6 +16,7 @@ sealed class Screens(
     object Library : Screens("library", R.string.library, R.drawable.library_music, showLabel = false)
     object Account : Screens("account", R.string.account, R.drawable.person)
 
+    object Welcome : Screens("welcome")
     object Login : Screens("login")
 
     object Songs : Screens("songs")

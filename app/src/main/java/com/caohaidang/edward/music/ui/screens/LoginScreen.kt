@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.caohaidang.edward.innertube.YouTube
+import com.caohaidang.edward.innertube.utils.parseCookieString
 import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.constants.AccountChannelHandleKey
@@ -41,12 +43,19 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     navController: NavController,
+    onLoggedIn: (() -> Unit)? = null,
 ) {
     var visitorData by rememberPreference(VisitorDataKey, "")
     var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     var accountName by rememberPreference(AccountNameKey, "")
     var accountEmail by rememberPreference(AccountEmailKey, "")
     var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
+
+    val isLoggedIn = "SAPISID" in parseCookieString(innerTubeCookie)
+    LaunchedEffect(isLoggedIn, accountName) {
+        // Cookie is stored first, the account name arrives a moment later: wait for both.
+        if (isLoggedIn && accountName.isNotBlank()) onLoggedIn?.invoke()
+    }
 
     var webView: WebView? = null
 

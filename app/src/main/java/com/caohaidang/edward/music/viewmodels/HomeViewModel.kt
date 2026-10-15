@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.caohaidang.edward.innertube.YouTube
+import com.caohaidang.edward.innertube.models.ArtistItem
 import com.caohaidang.edward.innertube.models.PlaylistItem
 import com.caohaidang.edward.innertube.models.WatchEndpoint
 import com.caohaidang.edward.innertube.models.YTItem
@@ -165,43 +166,63 @@ class HomeViewModel @Inject constructor(
         isLoading.value = false
     }
 
+    /**
+     * "Not heard yet, for you": new releases from the artists you play most, plus artists similar to
+     * them, minus anything you have already listened to, liked or saved.
+     */
     private suspend fun loadNewForYou(hideExplicit: Boolean) {
-        val generalNew = explorePage.value?.newReleaseAlbums.orEmpty()
-        val known = database.allAlbumIds().toHashSet()
+        val knownIds = (database.allAlbumIds() + database.heardAlbumIds()).toHashSet()
+        val heardTitles = database.heardTitles().map(::normTitle).filter { it.isNotEmpty() }.toHashSet()
+        fun AlbumItem.alreadyHeard(): Boolean = id in knownIds || normTitle(title) in heardTitles
 
         val from = System.currentTimeMillis() - 86400000L * 90
         val topArtists = database.mostPlayedArtists(from, limit = 12).first()
             .filter { it.artist.isYouTubeArtist }
-        val rank = topArtists.withIndex().associate { (i, a) -> a.id to i }
-        fun AlbumItem.artistRank(): Int =
-            artists.orEmpty().mapNotNull { a -> a.id?.let { rank[it] } }.minOrNull() ?: Int.MAX_VALUE
+        val tasteIds = topArtists.map { it.id }.toHashSet()
 
         val today = LocalDate.now()
         val minYear = if (today.monthValue <= 2) today.year - 1 else today.year
+        fun List<YTItem>.recentAlbums() = filterIsInstance<AlbumItem>().filter { (it.year ?: 0) >= minYear }
 
-        val candidates = ArrayList<AlbumItem>(generalNew)
+        // Lower rank = closer to your taste.
+        val ranked = ArrayList<Pair<AlbumItem, Int>>()
         coroutineScope {
-            topArtists.take(6).map { artist ->
+            val pages = topArtists.take(6).map { artist ->
+                async { YouTube.artist(artist.id).getOrNull() }
+            }.awaitAll().filterNotNull()
+
+            pages.forEachIndexed { i, page ->
+                page.sections.flatMap { it.items }.recentAlbums().forEach { ranked += it to i }
+            }
+
+            val similarArtists = pages.flatMap { page -> page.sections.flatMap { it.items }.filterIsInstance<ArtistItem>() }
+                .filter { it.id !in tasteIds }
+                .distinctBy { it.id }
+                .take(8)
+            similarArtists.mapIndexed { i, artist ->
                 async {
                     YouTube.artist(artist.id).getOrNull()
-                        ?.sections.orEmpty()
-                        .flatMap { it.items }
-                        .filterIsInstance<AlbumItem>()
-                        .filter { (it.year ?: 0) >= minYear }
+                        ?.sections.orEmpty().flatMap { it.items }.recentAlbums()
+                        .map { it to 100 + i }
                 }
-            }.awaitAll().forEach { candidates += it }
+            }.awaitAll().forEach { ranked += it }
         }
 
+        // Generic new releases only fill in when there is too little personal material.
         val seen = HashSet<String>()
-        val result = candidates
-            .filter { it.id !in known }
-
-            .filter { seen.add(albumKey(it)) }
-            .sortedWith(compareBy({ it.artistRank() }, { -(it.year ?: 0) }))
-            .filterExplicit(hideExplicit)
-            .take(12)
-        newForYou.value = result.ifEmpty { null }
+        fun pick(list: List<Pair<AlbumItem, Int>>) = list
+            .filter { !it.first.alreadyHeard() }
+            .filter { seen.add(albumKey(it.first)) }
+            .sortedWith(compareBy({ it.second }, { -(it.first.year ?: 0) }))
+            .map { it.first }
+        val personal = pick(ranked).filterExplicit(hideExplicit)
+        val result = if (personal.size >= 6) personal
+        else personal + pick(explorePage.value?.newReleaseAlbums.orEmpty().map { it to 1000 }).filterExplicit(hideExplicit)
+        newForYou.value = result.take(12).ifEmpty { null }
     }
+
+    private fun normTitle(title: String): String =
+        title.lowercase().replace(Regex("""[(\[].*?[)\]]"""), "").replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
 
     private fun albumKey(album: AlbumItem): String =
         (album.title + "|" + album.artists.orEmpty().joinToString { it.name }).lowercase()

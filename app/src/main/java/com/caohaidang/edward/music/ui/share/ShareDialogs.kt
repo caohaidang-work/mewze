@@ -9,11 +9,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -165,18 +169,20 @@ fun ShareLyricsDialog(
         link = ShareUtils.musicLink(song.id),
         fileName = "lyrics-${song.id}",
         onDismiss = onDismiss,
-    ) {
+    ) { listMaxHeight ->
         val content = LocalContentColor.current
         Text(
             text = stringResource(R.string.share_pick_lines, MAX_LYRIC_LINES),
             style = MaterialTheme.typography.labelMedium,
             color = content.copy(alpha = 0.7f),
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
         )
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 180.dp)
+                .heightIn(max = listMaxHeight)
                 .padding(horizontal = 16.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(content.copy(alpha = 0.08f))
@@ -199,7 +205,7 @@ fun ShareLyricsDialog(
                             if (isSelected) selected.remove(index)
                             else if (selected.size < MAX_LYRIC_LINES) selected.add(index)
                         }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
                 )
             }
         }
@@ -222,7 +228,7 @@ private fun ShareScaffold(
     fileName: String,
     onDismiss: () -> Unit,
     previewEmpty: Boolean = false,
-    extra: @Composable () -> Unit = {},
+    extra: @Composable (listMaxHeight: Dp) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -236,18 +242,25 @@ private fun ShareScaffold(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(topColor, bottomColor)))
         ) {
+            // Everything below the preview has a bounded height, so the preview is the only
+            // part that shrinks on short screens and the action buttons are never pushed off.
+            val pickerMaxHeight = (maxHeight * 0.2f).coerceIn(84.dp, 168.dp)
+
             CompositionLocalProvider(LocalContentColor provides contentColor) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.systemBars)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
                         IconButton(onClick = onDismiss) {
                             Icon(painterResource(R.drawable.close), contentDescription = null)
                         }
@@ -255,26 +268,30 @@ private fun ShareScaffold(
                             title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
 
-                    Box(
+                    BoxWithConstraints(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
                     ) {
                         if (preview != null) {
+                            val cardHeight = minOf(maxHeight, maxWidth * 16f / 9f).coerceAtLeast(0.dp)
+                            val cardWidth = cardHeight * 9f / 16f
+                            val radius = minOf(24.dp, cardWidth / 10f)
                             Image(
                                 bitmap = preview.asImageBitmap(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier
-                                    .fillMaxHeight()
-                                    .aspectRatio(9f / 16f)
-                                    .shadow(24.dp, RoundedCornerShape(24.dp))
-                                    .clip(RoundedCornerShape(24.dp))
+                                    .size(cardWidth, cardHeight)
+                                    .shadow(16.dp, RoundedCornerShape(radius))
+                                    .clip(RoundedCornerShape(radius))
                             )
                         } else if (previewEmpty) {
                             Text(
@@ -288,18 +305,19 @@ private fun ShareScaffold(
                     }
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp, vertical = 6.dp)
                     ) {
                         themes.forEachIndexed { index, theme ->
                             val selectedTheme = index == themeIndex
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(if (selectedTheme) 38.dp else 32.dp)
+                                    .size(if (selectedTheme) 36.dp else 30.dp)
                                     .clip(CircleShape)
                                     .background(Brush.verticalGradient(listOf(Color(theme.top), Color(theme.bottom))))
                                     .border(
@@ -312,7 +330,7 @@ private fun ShareScaffold(
                                 if (theme.solidCard) {
                                     Box(
                                         modifier = Modifier
-                                            .size(14.dp)
+                                            .size(13.dp)
                                             .clip(RoundedCornerShape(4.dp))
                                             .background(Color.White)
                                     )
@@ -321,23 +339,25 @@ private fun ShareScaffold(
                         }
                     }
 
-                    extra()
+                    extra(pickerMaxHeight)
 
                     val canShare = preview != null
                     val pillColors = ButtonDefaults.buttonColors(
                         containerColor = contentColor,
                         contentColor = bottomColor,
                     )
+                    val buttonPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp)
                     ) {
                         Button(
                             enabled = canShare,
                             colors = pillColors,
                             shape = CircleShape,
+                            contentPadding = buttonPadding,
                             onClick = {
                                 val bitmap = preview ?: return@Button
                                 scope.launch {
@@ -347,12 +367,13 @@ private fun ShareScaffold(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 52.dp)
+                                .height(48.dp)
                         ) {
                             Text(
                                 stringResource(R.string.share_to_story),
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -364,6 +385,7 @@ private fun ShareScaffold(
                                 colors = outlineColors,
                                 border = outline,
                                 shape = CircleShape,
+                                contentPadding = buttonPadding,
                                 onClick = {
                                     val bitmap = preview ?: return@OutlinedButton
                                     scope.launch {
@@ -373,19 +395,20 @@ private fun ShareScaffold(
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 48.dp)
-                            ) { Text(stringResource(R.string.share_as_image), maxLines = 1) }
+                                    .height(44.dp)
+                            ) { Text(stringResource(R.string.share_as_image), maxLines = 1, overflow = TextOverflow.Ellipsis) }
 
                             if (link != null) {
                                 OutlinedButton(
                                     colors = outlineColors,
                                     border = outline,
                                     shape = CircleShape,
+                                    contentPadding = buttonPadding,
                                     onClick = { ShareUtils.shareLink(context, link) },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                ) { Text(stringResource(R.string.share_link), maxLines = 1) }
+                                        .height(44.dp)
+                                ) { Text(stringResource(R.string.share_link), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             }
                         }
                     }

@@ -22,6 +22,9 @@ class MusicDatabase(
     val openHelper: SupportSQLiteOpenHelper
         get() = delegate.openHelper
 
+    val invalidationTracker: InvalidationTracker
+        get() = delegate.invalidationTracker
+
     fun query(block: MusicDatabase.() -> Unit) = with(delegate) {
         queryExecutor.execute {
             block(this@MusicDatabase)

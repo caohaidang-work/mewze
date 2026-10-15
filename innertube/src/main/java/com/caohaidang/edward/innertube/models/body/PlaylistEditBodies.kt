@@ -38,11 +38,16 @@ data class EditPlaylistBody(
         val removedVideoId: String? = null,
         val setVideoId: String? = null,
         val playlistName: String? = null,
+        val movedSetVideoIdSuccessor: String? = null,
     ) {
         companion object {
             fun add(videoId: String) = Action("ACTION_ADD_VIDEO", addedVideoId = videoId)
             fun remove(videoId: String, setVideoId: String) =
                 Action("ACTION_REMOVE_VIDEO", removedVideoId = videoId, setVideoId = setVideoId)
+
+            /** Moves the item [setVideoId] so that it sits right before [successorSetVideoId]. */
+            fun moveBefore(setVideoId: String, successorSetVideoId: String) =
+                Action("ACTION_MOVE_VIDEO_BEFORE", setVideoId = setVideoId, movedSetVideoIdSuccessor = successorSetVideoId)
 
             fun rename(name: String) = Action("ACTION_SET_PLAYLIST_NAME", playlistName = name)
         }

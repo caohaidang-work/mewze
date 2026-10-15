@@ -16,6 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import com.caohaidang.edward.music.utils.ProfileAvatarStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -30,6 +36,8 @@ import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.constants.AutoPlayKey
+import com.caohaidang.edward.music.constants.ProfileAvatarKey
+import com.caohaidang.edward.music.constants.ProfileNameKey
 import com.caohaidang.edward.music.constants.HideExplicitKey
 import com.caohaidang.edward.music.playback.queues.PersonalMixQueue
 import com.caohaidang.edward.music.constants.AccountChannelHandleKey
@@ -52,11 +60,21 @@ fun AccountScreen(
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
 
     val accountEmail by rememberPreference(AccountEmailKey, "")
+    val profileName by rememberPreference(ProfileNameKey, "")
+    val profileAvatar by rememberPreference(ProfileAvatarKey, "")
+    var showEditProfile by remember { mutableStateOf(false) }
     val syncState by viewModel.syncState.collectAsState()
     val lastSyncAt by viewModel.lastSyncAt.collectAsState()
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) viewModel.autoSync()
+    }
+
+    if (showEditProfile) {
+        EditProfileDialog(
+            googleName = accountName.takeIf { isLoggedIn && it.isNotBlank() },
+            onDismiss = { showEditProfile = false }
+        )
     }
 
     Column(
@@ -76,19 +94,36 @@ fun AccountScreen(
                 modifier = Modifier
                     .size(48.dp)
                     .glassCard(CircleShape)
+                    .clip(CircleShape)
+                    .clickable { showEditProfile = true }
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.person),
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp),
-                    tint = if (isLoggedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (profileAvatar.isNotBlank()) {
+                    AsyncImage(
+                        model = profileAvatar,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.person),
+                        contentDescription = null,
+                        modifier = Modifier.size(26.dp),
+                        tint = if (isLoggedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable { showEditProfile = true }
+            ) {
                 Text(
-                    text = if (isLoggedIn) accountName.ifBlank { stringResource(R.string.account_connected) }
-                    else stringResource(R.string.account_not_signed_in),
+                    text = profileName.ifBlank {
+                        if (isLoggedIn) accountName.ifBlank { stringResource(R.string.account_connected) }
+                        else stringResource(R.string.account_not_signed_in)
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -145,7 +180,23 @@ private fun SyncStatusLine(syncState: SyncState, lastSyncAt: Long, email: String
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        else -> Text(
+        is SyncState.Done -> if (syncState.summary.warnings.isNotEmpty()) {
+            Text(
+                "Đồng bộ chưa trọn vẹn: " + syncState.summary.warnings.first(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        } else SyncedText(lastSyncAt, email, muted)
+        else -> SyncedText(lastSyncAt, email, muted)
+    }
+}
+
+@Composable
+private fun SyncedText(lastSyncAt: Long, email: String, muted: androidx.compose.ui.graphics.Color) {
+    run {
+        Text(
             text = when {
                 lastSyncAt > 0L -> "Đã đồng bộ " + DateUtils.getRelativeTimeSpanString(
                     lastSyncAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
@@ -215,6 +266,10 @@ private fun AccountSection(
     var accountName by rememberPreference(AccountNameKey, "")
     var accountEmail by rememberPreference(AccountEmailKey, "")
     var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
+    var profileName by rememberPreference(ProfileNameKey, "")
+    var profileAvatar by rememberPreference(ProfileAvatarKey, "")
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
 
     Box(modifier = modifier.fillMaxWidth().glassCard(RoundedCornerShape(28.dp))) {
@@ -251,6 +306,10 @@ private fun AccountSection(
                         accountName = ""
                         accountEmail = ""
                         accountChannelHandle = ""
+                        // The in-app profile belongs to the signed-in user: clear it on sign-out.
+                        profileName = ""
+                        profileAvatar = ""
+                        scope.launch(Dispatchers.IO) { ProfileAvatarStorage.prune(context, null) }
                         YouTube.cookie = null
                         CookieManager.getInstance().removeAllCookies(null)
                         CookieManager.getInstance().flush()

@@ -67,12 +67,33 @@ import java.util.Locale
 
 private const val SLIDE_COUNT = 3
 
-@OptIn(ExperimentalFoundationApi::class)
+/** Toàn bộ mục Wrapped (giao diện + ảnh chia sẻ) luôn hiển thị bằng tiếng Anh. */
 @Composable
 fun WrappedSection(
     navController: NavController,
     modifier: Modifier = Modifier,
     viewModel: WrappedViewModel = hiltViewModel(),
+) {
+    val base = LocalContext.current
+    val english = remember(base) {
+        val cfg = android.content.res.Configuration(base.resources.configuration)
+        cfg.setLocale(Locale.ENGLISH)
+        base.createConfigurationContext(cfg)
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalContext provides english,
+        androidx.compose.ui.platform.LocalConfiguration provides english.resources.configuration,
+    ) {
+        WrappedSectionContent(navController, modifier, viewModel)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun WrappedSectionContent(
+    navController: NavController,
+    modifier: Modifier = Modifier,
+    viewModel: WrappedViewModel,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -86,17 +107,23 @@ fun WrappedSection(
 
     val current = data?.takeIf { it.period == period && it.offset == offset }
 
-    val brand = stringResource(R.string.wrapped_brand)
-    val minutesUnit = stringResource(R.string.wrapped_minutes_unit)
-    val topSongLabel = stringResource(R.string.wrapped_top_song)
-    val topSongsTitle = stringResource(R.string.wrapped_top_songs)
-    val topArtistsTitle = stringResource(R.string.wrapped_top_artists)
+    // Ảnh chia sẻ Wrapped luôn dùng tiếng Anh
+    val enContext = remember(context) {
+        val cfg = android.content.res.Configuration(context.resources.configuration)
+        cfg.setLocale(Locale.ENGLISH)
+        context.createConfigurationContext(cfg)
+    }
+    val brand = enContext.getString(R.string.wrapped_brand)
+    val minutesUnit = enContext.getString(R.string.wrapped_minutes_unit)
+    val topSongLabel = enContext.getString(R.string.wrapped_top_song)
+    val topSongsTitle = enContext.getString(R.string.wrapped_top_songs)
+    val topArtistsTitle = enContext.getString(R.string.wrapped_top_artists)
     val minutesFmt = R.string.wrapped_minutes_fmt
     val playsFmt = R.string.wrapped_plays_fmt
     val periodLabel = current?.let { periodLabel(it) }.orEmpty()
     val songsCount = current?.let { stringResource(R.string.wrapped_songs_count, it.songCount) }.orEmpty()
     val busiestDay = current?.busiestDay?.let {
-        stringResource(R.string.wrapped_busiest_day, DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale.getDefault()).format(it))
+        stringResource(R.string.wrapped_busiest_day, DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale.ENGLISH).format(it))
     }
     val topArtistLine = current?.topArtists?.firstOrNull()?.let { stringResource(R.string.wrapped_top_artist_line, it.name) }
 
@@ -110,7 +137,7 @@ fun WrappedSection(
         slides = null
         val texts = WrappedTexts(
             brand = brand,
-            periodLabel = periodLabel,
+            periodLabel = rangeLabel(d),
             minutesUnit = minutesUnit,
             songsCount = songsCount,
             busiestDay = busiestDay,
@@ -118,12 +145,12 @@ fun WrappedSection(
             topSongLabel = topSongLabel,
             topSongsTitle = topSongsTitle,
             topArtistsTitle = topArtistsTitle,
-            minutesText = { m -> context.getString(minutesFmt, m) },
-            playsText = { n -> context.getString(playsFmt, n) },
+            minutesText = { m -> enContext.getString(minutesFmt, m) },
+            playsText = { n -> enContext.getString(playsFmt, n) },
         )
         val songCovers = d.topSongs.map { ShareCardRenderer.loadBitmap(context, it.song.thumbnailUrl, 320) }
-        val artistAvatars = d.topArtists.mapIndexed { i, artist ->
-            ShareCardRenderer.loadBitmap(context, artist.thumbnailUrl, 320) ?: songCovers.getOrNull(i)
+        val artistAvatars = d.topArtists.map { artist ->
+            ShareCardRenderer.loadBitmap(context, artist.thumbnailUrl, 320)
         }
         val images = WrappedImages(
             topCover = d.topSongs.firstOrNull()?.song?.thumbnailUrl?.let { ShareCardRenderer.loadBitmap(context, it, 600) },
@@ -138,7 +165,8 @@ fun WrappedSection(
         slides = withContext(Dispatchers.Default) {
             listOf(
                 ShareCardRenderer.renderWrappedOverview(
-                    context, d.totalMillis / 60_000, d.topSongs.firstOrNull()?.song, d.topSongs.firstOrNull()?.playCount ?: 0, texts, images, theme
+                    context, d.totalMillis / 60_000, d.topSongs.firstOrNull()?.song, d.topSongs.firstOrNull()?.playCount ?: 0,
+                    d.topSongs.map { it.song to it.playCount }, texts, images, theme
                 ),
                 ShareCardRenderer.renderWrappedSongs(context, d.topSongs.map { it.song to it.playCount }, texts, images, theme),
                 ShareCardRenderer.renderWrappedArtists(context, d.topArtists.map { it.name to it.playTime }, texts, images, theme),
@@ -299,7 +327,7 @@ fun WrappedSection(
 private fun periodLabel(data: WrappedData): String {
     val last = data.end.minusDays(1).toLocalDate()
     val first = data.start.toLocalDate()
-    val locale = Locale.getDefault()
+    val locale = Locale.ENGLISH
     val range = when (data.period) {
         WrappedPeriod.WEEK -> {
             val f = DateTimeFormatter.ofPattern("dd/MM", locale)
@@ -315,4 +343,13 @@ private fun periodLabel(data: WrappedData): String {
         WrappedPeriod.YEAR -> stringResource(R.string.wrapped_this_year)
     }
     return "$prefix · $range"
+}
+
+
+/** Khoảng thời gian đầy đủ "dd/MM/yyyy – dd/MM/yyyy" dùng cho ảnh chia sẻ. */
+private fun rangeLabel(data: WrappedData): String {
+    val f = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
+    val first = data.start.toLocalDate()
+    val last = data.end.minusDays(1).toLocalDate()
+    return "${f.format(first)} – ${f.format(last)}"
 }

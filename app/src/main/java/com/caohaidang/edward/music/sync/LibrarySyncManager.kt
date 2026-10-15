@@ -12,8 +12,19 @@ import com.caohaidang.edward.music.db.entities.ArtistEntity
 import com.caohaidang.edward.music.db.entities.PlaylistEntity
 import com.caohaidang.edward.music.db.entities.PlaylistSongMap
 import com.caohaidang.edward.music.models.toMediaMetadata
+import com.caohaidang.edward.music.ui.utils.resize
+import com.caohaidang.edward.music.utils.PlaylistCoverStorage
 import com.caohaidang.edward.music.utils.reportException
+import androidx.room.InvalidationTracker
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,15 +97,68 @@ class LibrarySyncManager @Inject constructor(
     val isLoggedIn: Boolean
         get() = YouTube.cookie?.let { "SAPISID" in parseCookieString(it) } == true
 
+    /** Set when something asked for a forced sync while one was already running. */
+    private val rerunRequested = AtomicBoolean(false)
+
+    /** Fingerprint of the local playlists as they were when the last sync started. */
+    @Volatile
+    private var baselineFingerprint: Int? = null
+
+    private val localChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private var autoSyncStarted = false
+
+    /**
+     * Makes syncing fully automatic: it runs when the app opens (see MainActivity / App), shortly
+     * after any local playlist change (create, rename, add/remove/reorder songs, delete), and
+     * periodically while the app process is alive.
+     */
+    @OptIn(FlowPreview::class)
+    @Synchronized
+    fun startAutoSync(scope: CoroutineScope) {
+        if (autoSyncStarted) return
+        autoSyncStarted = true
+
+        database.invalidationTracker.addObserver(
+            object : InvalidationTracker.Observer("playlist", "playlist_song_map") {
+                override fun onInvalidated(tables: Set<String>) {
+                    localChanges.tryEmit(Unit)
+                }
+            }
+        )
+
+        scope.launch(Dispatchers.IO) {
+            localChanges.debounce(CHANGE_DEBOUNCE_MS).collect {
+                if (!isLoggedIn) return@collect
+                val baseline = baselineFingerprint
+                // Writes done by the sync itself end up in the baseline of the next run, so only a
+                // real difference (made by the user) triggers another sync.
+                if (baseline == null || playlistFingerprint() != baseline) syncAll(force = true)
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(PERIODIC_INTERVAL_MS)
+                syncAll()
+            }
+        }
+    }
+
     suspend fun syncAll(force: Boolean = false) {
         if (!isLoggedIn) return
         if (!force && System.currentTimeMillis() - _lastSyncAt.value < MIN_INTERVAL_MS) return
-        if (!mutex.tryLock()) return
+        if (!mutex.tryLock()) {
+            if (force) rerunRequested.set(true)
+            return
+        }
         try {
-            withContext(Dispatchers.IO) { performSync() }
+            var runs = 0
+            do {
+                rerunRequested.set(false)
+                withContext(Dispatchers.IO) { performSync() }
+            } while (rerunRequested.get() && ++runs < MAX_RERUNS)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             reportException(e)
             _state.value = SyncState.Failed(e.message ?: "Đồng bộ thất bại")
         } finally {
@@ -102,13 +166,27 @@ class LibrarySyncManager @Inject constructor(
         }
     }
 
+    private fun playlistFingerprint(): Int {
+        val sb = StringBuilder()
+        (database.mirroredPlaylists() + database.localOnlyPlaylists())
+            .sortedBy { it.id }
+            .forEach { p ->
+                sb.append(p.id).append('|').append(p.name).append('|').append(p.browseId).append('|')
+                database.playlistSongIdList(p.id).forEach { sb.append(it).append(',') }
+                sb.append('\n')
+            }
+        return sb.toString().hashCode()
+    }
+
     fun reset() {
         snapshotFile.delete()
+        baselineFingerprint = null
         _lastSyncAt.value = 0L
         _state.value = SyncState.Idle
     }
 
     private suspend fun performSync() {
+        baselineFingerprint = playlistFingerprint()
         val old = readSnapshot()
         var snap = old
         var summary = SyncSummary()
@@ -322,7 +400,10 @@ class LibrarySyncManager @Inject constructor(
             database.runInTransaction {
                 mirroredPlaylists()
                     .filter { it.browseId != null && it.browseId !in remoteIds && it.browseId in last }
-                    .forEach { delete(it) }
+                    .forEach {
+                        delete(it)
+                        PlaylistCoverStorage.deleteFor(context, it.id)
+                    }
             }
         } else if (last.isNotEmpty()) {
             warnings += "YouTube trả về danh sách playlist rỗng; giữ nguyên playlist trên máy."
@@ -351,7 +432,7 @@ class LibrarySyncManager @Inject constructor(
         val remoteName = item.title
 
         if (mirror == null || last == null) {
-            writeLocalPlaylist(item.id, mirror, remoteName, remoteSongs, remoteIds)
+            writeLocalPlaylist(item.id, mirror, remoteName, remoteSongs, remoteIds, item.thumbnail)
             return PlaylistState(remoteName, remoteIds) to false
         }
 
@@ -366,6 +447,37 @@ class LibrarySyncManager @Inject constructor(
 
         var didPush = false
         var failed = false
+
+        // Order: if only the local side was reordered, replay the reorder on YouTube. The first
+        // song decides the playlist cover there, so this also keeps covers in step.
+        var reorderedIds: List<String>? = null
+        run {
+            val common = localSet intersect remoteSet intersect lastSet
+            val orderLocal = localIds.filter { it in common }.distinct()
+            val orderLast = last.songs.filter { it in common }.distinct()
+            val orderRemote = remoteIds.filter { it in common }.distinct()
+            if (orderLocal == orderLast || orderRemote != orderLast || orderLocal.size < 2) return@run
+
+            val current = remoteSongs.map { it.id to it.setVideoId }.toMutableList()
+            if (current.any { it.second == null }) return@run
+            val slots = current.indices.filter { current[it].first in common }
+            val setIdByVideo = current.associate { it.first to it.second }
+            val target = current.toMutableList()
+            slots.forEachIndexed { k, slot -> target[slot] = orderLocal[k] to setIdByVideo[orderLocal[k]] }
+
+            val moves = mutableListOf<Pair<String, String>>()
+            for (i in target.indices) {
+                if (current[i].first == target[i].first) continue
+                val j = (i + 1 until current.size).firstOrNull { current[it].first == target[i].first } ?: continue
+                val moved = current.removeAt(j)
+                moves += moved.second!! to current[i].second!!
+                current.add(i, moved)
+            }
+            if (moves.isEmpty() || moves.size > MAX_REORDER_MOVES) return@run
+            YouTube.reorderPlaylist(item.id, moves)
+                .onSuccess { didPush = true; reorderedIds = target.map { it.first } }
+                .onFailure { failed = true; reportException(it) }
+        }
 
         val addedOk = mutableSetOf<String>()
         addedLocal.take(MAX_PUSH_PER_SYNC).let { batch ->
@@ -395,9 +507,9 @@ class LibrarySyncManager @Inject constructor(
         }
         val finalName = if (remoteRenamed) remoteName else mirror.name
 
-        val finalIds = remoteIds.filter { it !in removedLocal } + addedLocal
-        if (finalIds != localIds || finalName != mirror.name) {
-            writeLocalPlaylist(mirror.id, mirror, finalName, remoteSongs, finalIds)
+        val finalIds = (reorderedIds ?: remoteIds).filter { it !in removedLocal } + addedLocal
+        if (finalIds != localIds || finalName != mirror.name || coverFor(mirror, item.thumbnail) != mirror.customThumbnail) {
+            writeLocalPlaylist(mirror.id, mirror, finalName, remoteSongs, finalIds, item.thumbnail)
         }
 
         if (failed) {
@@ -419,14 +531,18 @@ class LibrarySyncManager @Inject constructor(
         name: String,
         remoteSongs: List<SongItem>,
         orderedIds: List<String>,
+        remoteCover: String?,
     ) {
         database.runInTransaction {
             val existing = mirror ?: mirroredPlaylists().firstOrNull { it.browseId == browseId }
             val localId = existing?.id ?: PlaylistEntity.generatePlaylistId().also {
-                insert(PlaylistEntity(id = it, name = name, browseId = browseId))
+                insert(PlaylistEntity(id = it, name = name, browseId = browseId, customThumbnail = normalizeCover(remoteCover)))
             }
-            if (existing != null && existing.name != name) {
-                update(existing.copy(name = name))
+            if (existing != null) {
+                val cover = coverFor(existing, remoteCover)
+                if (existing.name != name || existing.customThumbnail != cover) {
+                    update(existing.copy(name = name, customThumbnail = cover))
+                }
             }
             remoteSongs.forEach { insert(it.toMediaMetadata()) }
             clearPlaylist(localId)
@@ -435,6 +551,17 @@ class LibrarySyncManager @Inject constructor(
             }
         }
     }
+
+    /**
+     * The cover a mirrored playlist should have after a sync. A picture the user chose on this
+     * device always wins; otherwise the playlist follows its cover on YouTube Music (which changes
+     * when the first song changes).
+     */
+    private fun coverFor(local: PlaylistEntity, remoteCover: String?): String? =
+        if (PlaylistCoverStorage.isLocalFile(local.customThumbnail)) local.customThumbnail
+        else normalizeCover(remoteCover) ?: local.customThumbnail
+
+    private fun normalizeCover(url: String?): String? = url?.takeIf { it.isNotBlank() }?.resize(544, 544)
 
     private data class AlbumResult(
         val ids: Set<String>,
@@ -578,7 +705,11 @@ class LibrarySyncManager @Inject constructor(
     private companion object {
         const val TAG = "LibrarySync"
         const val SNAPSHOT_FILE = "sync_snapshot.json"
-        const val MIN_INTERVAL_MS = 15 * 60 * 1000L
+        const val MIN_INTERVAL_MS = 4 * 60 * 1000L
+        const val PERIODIC_INTERVAL_MS = 5 * 60 * 1000L
+        const val CHANGE_DEBOUNCE_MS = 3_000L
+        const val MAX_RERUNS = 3
+        const val MAX_REORDER_MOVES = 60
         const val MAX_PAGES = 100
         const val MAX_PUSH_PER_SYNC = 100
         const val MAX_NEW_PLAYLISTS_PER_SYNC = 10

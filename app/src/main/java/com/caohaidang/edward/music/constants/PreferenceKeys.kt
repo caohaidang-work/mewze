@@ -48,6 +48,7 @@ val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoPlayKey = booleanPreferencesKey("autoPlay")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")
 val StopMusicOnTaskClearKey = booleanPreferencesKey("stopMusicOnTaskClear")
+val BatteryPromptShownKey = booleanPreferencesKey("batteryPromptShown")
 
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
@@ -150,6 +151,13 @@ val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
+
+// Welcome / login gate shown on first launch.
+val OnboardingDoneKey = booleanPreferencesKey("onboardingDone")
+
+// In-app profile. Lives only on this device and is independent of the Google / YouTube account.
+val ProfileNameKey = stringPreferencesKey("profileName")
+val ProfileAvatarKey = stringPreferencesKey("profileAvatar")
 
 val LanguageCodeToName = mapOf(
     "af" to "Afrikaans",
