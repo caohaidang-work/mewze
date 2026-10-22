@@ -6,6 +6,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -80,6 +88,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachReversed
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Timeline
+import com.caohaidang.edward.music.extensions.toggleRepeatMode
+import com.caohaidang.edward.music.constants.ShowQueueKey
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
 import com.caohaidang.edward.music.LocalPlayerConnection
@@ -99,7 +109,9 @@ import com.caohaidang.edward.music.ui.menu.PlayerMenu
 import com.caohaidang.edward.music.ui.menu.QueueSelectionMenu
 import com.caohaidang.edward.music.utils.joinByBullet
 import com.caohaidang.edward.music.utils.makeTimeString
+import com.caohaidang.edward.music.utils.dataStore
 import com.caohaidang.edward.music.utils.rememberPreference
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -131,7 +143,20 @@ fun Queue(
 
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
 
-    var showLyrics by rememberPreference(ShowLyricsKey, defaultValue = false)
+    val showLyrics by rememberPreference(ShowLyricsKey, defaultValue = false)
+    val showQueue by rememberPreference(ShowQueueKey, defaultValue = false)
+    // Lyrics và danh sách chờ loại trừ nhau: ghi cả hai khoá trong MỘT lần edit
+    // để không bao giờ có khoảnh khắc cả hai cùng bật (nguyên nhân bị chồng đè).
+    val modeContext = LocalContext.current
+    val modeScope = rememberCoroutineScope()
+    val setPanel: (lyrics: Boolean, queue: Boolean) -> Unit = { lyrics, queue ->
+        modeScope.launch {
+            modeContext.dataStore.edit {
+                it[ShowLyricsKey] = lyrics
+                it[ShowQueueKey] = queue
+            }
+        }
+    }
     var lockQueue by rememberPreference(LockQueueKey, defaultValue = false)
 
     var inSelectMode by remember {
@@ -174,82 +199,45 @@ fun Queue(
         )
     }
 
-    var showShareDialog by remember { mutableStateOf(false) }
-    if (showShareDialog) {
-        mediaMetadata?.let {
-            ShareSongDialog(
-                song = it,
-                onDismiss = { showShareDialog = false }
-            )
-        }
-    }
-
-    var showDetailsDialog by remember { mutableStateOf(false) }
-    if (showDetailsDialog) {
-        DetailsDialog(
-            onDismiss = { showDetailsDialog = false }
-        )
-    }
-
     BottomSheet(
         state = state,
         backgroundColor = backgroundColor,
         modifier = modifier,
         fadeBackgroundIn = true,
+        // Bỏ vuốt lên/chạm cạnh dưới để mở danh sách chờ: đã có nút danh sách chờ riêng
+        interactive = false,
         collapsedContent = {
             CompositionLocalProvider(LocalContentColor provides androidx.compose.ui.graphics.Color.White) {
                 Row(
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(
                             WindowInsets.systemBars
                                 .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                         )
-                        .padding(start = 16.dp)
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 6.dp)
                 ) {
-                    IconButton(onClick = { showLyrics = !showLyrics }) {
-                        Icon(
-                            painter = painterResource(R.drawable.lyrics),
-                            contentDescription = null,
-                            modifier = Modifier.alpha(if (showLyrics) 1f else 0.5f)
-                        )
-                    }
-
-                    IconButton(onClick = { state.expandSoft() }) {
-                        Icon(
-                            painter = painterResource(R.drawable.queue_music),
-                            contentDescription = null
-                        )
-                    }
-
-                    IconButton(
-                        enabled = mediaMetadata != null,
-                        onClick = { showShareDialog = true }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.share),
-                            contentDescription = stringResource(R.string.share)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    bottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = { showDetailsDialog = true },
-                                    onDismiss = menuState::dismiss
-                                )
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        BottomBarToggle(
+                            icon = R.drawable.lyrics,
+                            active = showLyrics && !showQueue,
+                            onClick = {
+                                // Lyrics đang hiện (và queue tắt) -> tắt; ngược lại -> bật lyrics, tắt queue
+                                val lyricsOn = showLyrics && !showQueue
+                                setPanel(!lyricsOn, false)
                             }
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.more_horiz),
-                            contentDescription = null
+                        )
+                    }
+
+                    AudioOutputButton(modifier = Modifier.weight(2f))
+
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        BottomBarToggle(
+                            icon = R.drawable.queue_music,
+                            active = showQueue,
+                            onClick = { setPanel(false, !showQueue) }
                         )
                     }
                 }
@@ -727,4 +715,49 @@ fun DetailsDialog(
             }
         }
     )
+}
+
+
+/** Nút bật/tắt ở thanh dưới cùng: khi bật hiện vòng tròn sáng với icon tối, có hiệu ứng nảy nhẹ. */
+@Composable
+private fun BottomBarToggle(
+    icon: Int,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bg by animateColorAsState(
+        targetValue = if (active) Color(0xFFDDF5C8) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "toggleBg"
+    )
+    val fg by animateColorAsState(
+        targetValue = if (active) Color(0xFF1E2E1A) else Color.White.copy(alpha = 0.6f),
+        animationSpec = tween(220),
+        label = "toggleFg"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (active) 1f else 0.92f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "toggleScale"
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(40.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(bg)
+            .clickable(onClick = onClick)
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = fg,
+            modifier = Modifier.size(24.dp)
+        )
+    }
 }

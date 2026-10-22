@@ -726,7 +726,7 @@ fun LocalPlaylistHeader(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Chọn ảnh từ thư viện") }
-            if (playlist.playlist.customThumbnail != null) {
+            if (PlaylistCoverStorage.isLocalFile(playlist.playlist.customThumbnail)) {
                 TextButton(
                     onClick = {
                         showCoverDialog = false
@@ -736,7 +736,12 @@ fun LocalPlaylistHeader(
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Dùng lại ảnh mặc định") }
+                ) {
+                    Text(
+                        if (playlist.playlist.browseId != null) "Dùng ảnh bìa từ YouTube Music"
+                        else "Dùng lại ảnh mặc định"
+                    )
+                }
             }
         }
     }

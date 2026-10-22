@@ -59,6 +59,8 @@ fun BottomSheet(
     onDismiss: (() -> Unit)? = null,
 
     fadeBackgroundIn: Boolean = false,
+    // false: không kéo/chạm để mở rộng sheet (vẫn hiển thị collapsedContent)
+    interactive: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -71,6 +73,8 @@ fun BottomSheet(
                     .coerceAtLeast(0)
                 IntOffset(x = 0, y = y)
             }
+            .then(
+                if (!interactive) Modifier else Modifier
             .pointerInput(state) {
                 val velocityTracker = VelocityTracker()
 
@@ -90,6 +94,7 @@ fun BottomSheet(
                     }
                 )
             }
+            )
             .clip(
                 RoundedCornerShape(
                     topStart = if (!state.isExpanded) 16.dp else 0.dp,
@@ -124,10 +129,12 @@ fun BottomSheet(
                     .graphicsLayer {
                         alpha = 1f - (state.progress * 4).coerceAtMost(1f)
                     }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = state::expandSoft
+                    .then(
+                        if (!interactive) Modifier else Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = state::expandSoft
+                        )
                     )
                     .fillMaxWidth()
                     .height(state.collapsedBound),

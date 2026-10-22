@@ -94,6 +94,7 @@ class App : Application(), ImageLoaderFactory {
                         } ?: YouTube.DEFAULT_VISITOR_DATA
                 }
         }
+        syncManager.startAutoSync(GlobalScope)
         GlobalScope.launch {
             dataStore.data
                 .map { it[InnerTubeCookieKey] }

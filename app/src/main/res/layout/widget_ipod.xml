@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+"iPod" home-screen widget. The whole face is one bitmap (see IpodWidgetRenderer); everything on top is
+a transparent click area. ip_hit_app covers the whole widget (opens the app). ip_grid is a 3x3 grid that
+the renderer pads at run time so it sits exactly over the click wheel:
+
+      [ ip_hit_menu (MUSIC)             ]
+      [ prev ][ ip_hit_center ][ next   ]
+      [        ip_hit_play              ]
+
+Only RemoteViews-safe classes (FrameLayout / LinearLayout / ImageView).
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ip_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/ip_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/ip_preview" />
+
+    <FrameLayout
+        android:id="@+id/ip_hit_app"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/ip_grid"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- top row: the MUSIC label -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="3"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/ip_hit_menu"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+
+        <!-- middle row: previous | centre button | next -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="4"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/ip_hit_prev"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:contentDescription="@string/ip_cd_prev" />
+
+            <FrameLayout
+                android:id="@+id/ip_hit_center"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="4" />
+
+            <FrameLayout
+                android:id="@+id/ip_hit_next"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:contentDescription="@string/ip_cd_next" />
+        </LinearLayout>
+
+        <!-- bottom row: play / pause -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="3"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/ip_hit_play"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/ip_cd_play" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

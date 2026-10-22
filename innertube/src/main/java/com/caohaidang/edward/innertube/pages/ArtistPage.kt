@@ -20,6 +20,8 @@ data class ArtistSection(
     val title: String,
     val items: List<YTItem>,
     val moreEndpoint: BrowseEndpoint?,
+    /** True for a vertical list shelf (e.g. top songs), false for a horizontal carousel. */
+    val isList: Boolean = false,
 )
 
 data class ArtistPage(
@@ -53,9 +55,10 @@ data class ArtistPage(
             return ArtistSection(
                 title = renderer.title?.runs?.firstOrNull()?.text ?: return null,
                 items = renderer.contents?.mapNotNull {
-                    fromMusicResponsiveListItemRenderer(it.musicResponsiveListItemRenderer)
-                }?.ifEmpty { null } ?: return null,
-                moreEndpoint = renderer.title.runs.firstOrNull()?.navigationEndpoint?.browseEndpoint
+                    it.musicResponsiveListItemRenderer?.let(::fromMusicResponsiveListItemRenderer)
+                }?.distinctBy { it.id }?.ifEmpty { null } ?: return null,
+                moreEndpoint = renderer.title.runs.firstOrNull()?.navigationEndpoint?.browseEndpoint,
+                isList = true
             )
         }
 
@@ -66,7 +69,7 @@ data class ArtistPage(
                     it.musicTwoRowItemRenderer?.let { renderer ->
                         fromMusicTwoRowItemRenderer(renderer)
                     }
-                }.ifEmpty { null } ?: return null,
+                }.distinctBy { it.id }.ifEmpty { null } ?: return null,
                 moreEndpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
             )
         }

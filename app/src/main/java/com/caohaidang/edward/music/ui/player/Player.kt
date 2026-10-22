@@ -9,6 +9,9 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -84,6 +87,7 @@ import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.constants.DarkModeKey
 import com.caohaidang.edward.music.constants.FlowingArtworkKey
 import com.caohaidang.edward.music.constants.ShowLyricsKey
+import com.caohaidang.edward.music.constants.ShowQueueKey
 import com.caohaidang.edward.music.constants.PlayerHorizontalPadding
 import com.caohaidang.edward.music.constants.PureBlackKey
 import com.caohaidang.edward.music.constants.QueuePeekHeight
@@ -95,7 +99,9 @@ import com.caohaidang.edward.music.extensions.toggleRepeatMode
 import com.caohaidang.edward.music.models.MediaMetadata
 import com.caohaidang.edward.music.ui.component.BottomSheet
 import com.caohaidang.edward.music.ui.component.BottomSheetState
+import com.caohaidang.edward.music.ui.component.LocalMenuState
 import com.caohaidang.edward.music.ui.component.ResizableIconButton
+import com.caohaidang.edward.music.ui.menu.PlayerMenu
 import com.caohaidang.edward.music.ui.component.rememberBottomSheetState
 import com.caohaidang.edward.music.ui.screens.settings.DarkMode
 import com.caohaidang.edward.music.utils.makeTimeString
@@ -165,7 +171,9 @@ fun BottomSheetPlayer(
     }
 
     val flowingArtwork by rememberPreference(FlowingArtworkKey, defaultValue = true)
-    val showLyrics by rememberPreference(ShowLyricsKey, false)
+    val showQueue by rememberPreference(ShowQueueKey, false)
+    // Danh sách chờ ưu tiên hơn lyrics: không bao giờ hiển thị cả hai cùng lúc
+    val showLyrics = rememberPreference(ShowLyricsKey, false).value && !showQueue
 
     val queueSheetState = rememberBottomSheetState(
         dismissedBound = QueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
@@ -194,7 +202,7 @@ fun BottomSheetPlayer(
             animate = !state.isCollapsed,
             motion = flowingArtwork,
             landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE,
-            showLyrics = showLyrics,
+            showLyrics = showLyrics || showQueue,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -211,7 +219,13 @@ fun BottomSheetPlayer(
         val controlsContent: @Composable ColumnScope.(MediaMetadata) -> Unit = { mediaMetadata ->
             val scope = rememberCoroutineScope()
             val database = LocalDatabase.current
+            val menuState = LocalMenuState.current
+            var showDetailsDialog by remember { mutableStateOf(false) }
+            if (showDetailsDialog) {
+                DetailsDialog(onDismiss = { showDetailsDialog = false })
+            }
 
+            if (!showLyrics && !showQueue) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -325,14 +339,22 @@ fun BottomSheetPlayer(
                 Spacer(Modifier.width(8.dp))
 
                 PlayerCircleButton(
-                    icon = when (repeatMode) {
-                        REPEAT_MODE_OFF, REPEAT_MODE_ALL -> R.drawable.repeat
-                        REPEAT_MODE_ONE -> R.drawable.repeat_one
-                        else -> throw IllegalStateException()
-                    },
-                    tint = Color.White.copy(alpha = if (repeatMode == REPEAT_MODE_OFF) 0.6f else 1f),
-                    onClick = playerConnection.player::toggleRepeatMode
+                    icon = R.drawable.more_horiz,
+                    tint = Color.White,
+                    onClick = {
+                        menuState.show {
+                            PlayerMenu(
+                                mediaMetadata = mediaMetadata,
+                                navController = navController,
+                                bottomSheetState = state,
+                                onShowDetailsDialog = { showDetailsDialog = true },
+                                onDismiss = menuState::dismiss
+                            )
+                        }
+                    }
                 )
+            }
+
             }
 
             Spacer(Modifier.height(18.dp))
@@ -439,6 +461,7 @@ fun BottomSheetPlayer(
             Spacer(Modifier.height(12.dp))
 
             VolumeRow(modifier = Modifier.padding(horizontal = PlayerHorizontalPadding))
+
         }
 
         CompositionLocalProvider(LocalContentColor provides Color.White) {
@@ -456,6 +479,11 @@ fun BottomSheetPlayer(
                             Thumbnail(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
+                            )
+                            AnimatedQueuePanel(
+                                visible = showQueue,
+                                playerBottomSheetState = state,
+                                navController = navController
                             )
                         }
 
@@ -491,6 +519,11 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
                             )
+                            AnimatedQueuePanel(
+                                visible = showQueue,
+                                playerBottomSheetState = state,
+                                navController = navController
+                            )
                         }
 
                         mediaMetadata?.let {
@@ -507,6 +540,25 @@ fun BottomSheetPlayer(
             state = queueSheetState,
             playerBottomSheetState = state,
             backgroundColor = backgroundColor,
+            navController = navController
+        )
+    }
+}
+
+/** Tách riêng để AnimatedVisibility không bị nhập nhằng với RowScope/ColumnScope bên ngoài. */
+@Composable
+private fun AnimatedQueuePanel(
+    visible: Boolean,
+    playerBottomSheetState: BottomSheetState,
+    navController: NavController,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200, delayMillis = 120)),
+        exit = fadeOut(tween(120)),
+    ) {
+        QueuePanel(
+            playerBottomSheetState = playerBottomSheetState,
             navController = navController
         )
     }

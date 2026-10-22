@@ -86,7 +86,7 @@ interface DatabaseDao {
     fun likedSongsByRowIdAsc(): Flow<List<Song>>
 
     @Transaction
-    @Query("SELECT * FROM song WHERE liked ORDER BY inLibrary")
+    @Query("SELECT * FROM song WHERE liked ORDER BY inLibrary, rowId")
     fun likedSongsByCreateDateAsc(): Flow<List<Song>>
 
     @Transaction
@@ -315,6 +315,20 @@ interface DatabaseDao {
     @Query("SELECT id FROM album")
     fun allAlbumIds(): List<String>
 
+    /** Albums of every song the user has played, liked or saved. */
+    @Query("SELECT DISTINCT albumId FROM song WHERE albumId IS NOT NULL AND (totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL)")
+    fun heardAlbumIds(): List<String>
+
+    /** Titles of everything the user has listened to (songs and their albums), used to hide re-releases and singles. */
+    @Query("""
+        SELECT title FROM song WHERE totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL
+        UNION
+        SELECT albumName FROM song WHERE albumName IS NOT NULL AND (totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL)
+        UNION
+        SELECT title FROM album WHERE bookmarkedAt IS NOT NULL
+    """)
+    fun heardTitles(): List<String>
+
     @Query(
         """
         SELECT songId AS id, COUNT(*) AS playCount, SUM(playTime) AS playTime
@@ -335,6 +349,7 @@ interface DatabaseDao {
                        FROM event
                        WHERE timestamp >= :from AND timestamp < :to
                        GROUP BY songId) AS e ON song_artist_map.songId = e.songId
+        WHERE song_artist_map.artistId LIKE 'UC%' OR song_artist_map.position = 0
         GROUP BY song_artist_map.artistId
         ORDER BY playTime DESC
         LIMIT :limit
@@ -504,7 +519,7 @@ interface DatabaseDao {
     fun albumsByPlayTimeAsc(): Flow<List<Album>>
 
     @Transaction
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY rowId")
+    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY bookmarkedAt, rowId")
     fun albumsLikedByCreateDateAsc(): Flow<List<Album>>
 
     @Transaction
@@ -581,7 +596,7 @@ interface DatabaseDao {
     fun albumArtistMaps(albumId: String): List<AlbumArtistMap>
 
     @Transaction
-    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist ORDER BY rowId")
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist ORDER BY COALESCE(createdAt, 0), rowId")
     fun playlistsByCreateDateAsc(): Flow<List<Playlist>>
 
     @Transaction
@@ -719,11 +734,32 @@ interface DatabaseDao {
     @Query("SELECT id FROM album WHERE bookmarkedAt IS NOT NULL")
     fun bookmarkedAlbumIds(): List<String>
 
+    // Order helpers used by the YouTube Music sync: the "date" of liked songs, saved albums and
+    // mirrored playlists mirrors the order of the YouTube Music library (newest first).
+    @Query("SELECT id FROM song WHERE liked ORDER BY inLibrary DESC, rowId DESC")
+    fun likedSongIdsNewestFirst(): List<String>
+
+    @Query("UPDATE song SET inLibrary = :at WHERE id = :id")
+    fun setSongInLibraryAt(id: String, at: LocalDateTime)
+
+    @Query("SELECT id FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY bookmarkedAt DESC, rowId DESC")
+    fun bookmarkedAlbumIdsNewestFirst(): List<String>
+
+    @Query("SELECT id FROM playlist WHERE browseId IS NOT NULL ORDER BY COALESCE(createdAt, 0) DESC, rowId DESC")
+    fun mirroredPlaylistIdsNewestFirst(): List<String>
+
+    @Query("UPDATE playlist SET createdAt = :at WHERE id = :id")
+    fun setPlaylistCreatedAt(id: String, at: LocalDateTime)
+
     @Query("SELECT * FROM playlist WHERE browseId IS NULL AND id NOT IN ('LP_LIKED', 'LP_DOWNLOADED')")
     fun localOnlyPlaylists(): List<PlaylistEntity>
 
     @Query("SELECT songId FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
     fun playlistSongIdList(playlistId: String): List<String>
+
+    /** Plain (non-Flow) lookup used by the Spotify importer. */
+    @Query("SELECT * FROM playlist WHERE id = :id")
+    fun playlistEntityById(id: String): PlaylistEntity?
 
     @Query("UPDATE playlist SET browseId = :browseId WHERE id = :id")
     fun setPlaylistBrowseId(id: String, browseId: String?)

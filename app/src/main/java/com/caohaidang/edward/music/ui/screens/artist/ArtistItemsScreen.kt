@@ -3,7 +3,10 @@ package com.caohaidang.edward.music.ui.screens.artist
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -15,6 +18,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -33,11 +38,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -87,6 +94,7 @@ fun ArtistItemsScreen(
 
     val title by viewModel.title.collectAsState()
     val itemsPage by viewModel.itemsPage.collectAsState()
+    val loadFailed by viewModel.error.collectAsState()
     val songIndex: Map<String, SongItem> by remember(itemsPage) {
         derivedStateOf {
             itemsPage?.items
@@ -111,7 +119,10 @@ fun ArtistItemsScreen(
         BackHandler(onBack = onExitSelectionMode)
     }
 
-    LaunchedEffect(lazyListState) {
+    // Keyed on the continuation token: when a page arrives while the "loading" row is still on
+    // screen (short pages), the flow restarts and asks for the next page instead of stalling.
+    val continuation = itemsPage?.continuation
+    LaunchedEffect(lazyListState, continuation) {
         snapshotFlow {
             lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
         }.collect { shouldLoadMore ->
@@ -120,7 +131,7 @@ fun ArtistItemsScreen(
         }
     }
 
-    LaunchedEffect(lazyGridState) {
+    LaunchedEffect(lazyGridState, continuation) {
         snapshotFlow {
             lazyGridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
         }.collect { shouldLoadMore ->
@@ -129,12 +140,33 @@ fun ArtistItemsScreen(
         }
     }
 
-    if (itemsPage == null) {
+    if (itemsPage == null && !loadFailed) {
         ShimmerHost(
             modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
         ) {
             repeat(8) {
                 ListItemPlaceHolder()
+            }
+        }
+    }
+
+    // Failed or empty: show a message with a retry button instead of a blank/endless-loading screen.
+    if ((itemsPage == null && loadFailed) || (itemsPage != null && itemsPage?.items.isNullOrEmpty())) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+        ) {
+            Text(
+                text = stringResource(if (loadFailed) R.string.error_unknown else R.string.no_results_found),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (loadFailed) {
+                TextButton(onClick = viewModel::load) {
+                    Text(stringResource(R.string.retry))
+                }
             }
         }
     }

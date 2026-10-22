@@ -9,6 +9,17 @@ import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.compose.runtime.snapshotFlow
+import androidx.datastore.preferences.core.edit
+import com.caohaidang.edward.music.constants.BatteryPromptShownKey
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -103,9 +114,13 @@ import com.caohaidang.edward.music.constants.DarkModeKey
 import com.caohaidang.edward.music.constants.DefaultOpenTabKey
 import com.caohaidang.edward.music.constants.DisableScreenshotKey
 import com.caohaidang.edward.music.constants.DynamicThemeKey
+import com.caohaidang.edward.music.constants.MiniPlayerBottomGap
 import com.caohaidang.edward.music.constants.MiniPlayerHeight
 import com.caohaidang.edward.music.constants.NavigationBarAnimationSpec
+import com.caohaidang.edward.music.constants.InnerTubeCookieKey
 import com.caohaidang.edward.music.constants.NavigationBarHeight
+import com.caohaidang.edward.music.constants.OnboardingDoneKey
+import com.caohaidang.edward.innertube.utils.parseCookieString
 import com.caohaidang.edward.music.constants.PauseSearchHistoryKey
 import com.caohaidang.edward.music.constants.PureBlackKey
 import com.caohaidang.edward.music.constants.SearchSource
@@ -118,6 +133,7 @@ import com.caohaidang.edward.music.playback.DownloadUtil
 import com.caohaidang.edward.music.playback.MusicService
 import com.caohaidang.edward.music.playback.MusicService.MusicBinder
 import com.caohaidang.edward.music.playback.PlayerConnection
+import com.caohaidang.edward.music.sync.LibrarySyncManager
 import com.caohaidang.edward.music.ui.component.BottomSheetMenu
 import com.caohaidang.edward.music.ui.component.GlassNavigationBar
 import com.caohaidang.edward.music.ui.component.glassAmbient
@@ -167,6 +183,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var downloadUtil: DownloadUtil
 
+    @Inject
+    lateinit var syncManager: LibrarySyncManager
+
+    @Inject
+    lateinit var spotifyAuth: com.caohaidang.edward.music.spotify.SpotifyAuth
+
+    /** Finishes "Log in with Spotify" when the browser redirects back to mewze://spotify-callback. */
+    private fun handleSpotifyRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (!spotifyAuth.isRedirect(uri)) return
+        // Consume the redirect so a re-delivered intent (rotation, recents) is not processed twice.
+        intent.data = null
+        lifecycleScope.launch { spotifyAuth.handleRedirect(uri) }
+    }
+
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -183,14 +214,30 @@ class MainActivity : ComponentActivity() {
 
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
 
+    private var serviceBound = false
+
+    private fun unbindMusicService() {
+        if (!serviceBound) return
+        serviceBound = false
+        runCatching { unbindService(serviceConnection) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleSpotifyRedirect(intent)
+    }
+
     override fun onStart() {
         super.onStart()
         startService(Intent(this, MusicService::class.java))
-        bindService(Intent(this, MusicService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
+        // Pull/push the YouTube Music library every time the app comes to the foreground.
+        lifecycleScope.launch { syncManager.syncAll() }
+        serviceBound = bindService(Intent(this, MusicService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     override fun onStop() {
-        unbindService(serviceConnection)
+        // Only the binding goes away here; the service itself keeps playing in the background.
+        unbindMusicService()
         super.onStop()
     }
 
@@ -198,8 +245,35 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         if (dataStore.get(StopMusicOnTaskClearKey, false) && playerConnection?.isPlaying?.value == true && isFinishing) {
             stopService(Intent(this, MusicService::class.java))
-            unbindService(serviceConnection)
+            // onStop already unbound; unbinding a second time used to throw IllegalArgumentException.
+            unbindMusicService()
             playerConnection = null
+        }
+    }
+
+    /**
+     * Many phones (Xiaomi, Oppo, Samsung...) kill background audio services of apps that are
+     * battery-optimised, which shows up as music stopping after leaving the app. Ask once, right
+     * after the first song starts, to be exempt.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun askForBatteryExemptionAfterFirstPlayback() {
+        lifecycleScope.launch {
+            if (dataStore.get(BatteryPromptShownKey, false)) return@launch
+            snapshotFlow { playerConnection }
+                .filterNotNull()
+                .flatMapLatest { it.isPlaying }
+                .first { it }
+            delay(2000)
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return@launch
+            if (powerManager.isIgnoringBatteryOptimizations(packageName)) return@launch
+            dataStore.edit { it[BatteryPromptShownKey] = true }
+            runCatching {
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(Uri.parse("package:$packageName"))
+                )
+            }
         }
     }
 
@@ -207,7 +281,9 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleSpotifyRedirect(intent)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        askForBatteryExemptionAfterFirstPlayback()
 
         lifecycleScope.launch {
             dataStore.data
@@ -305,6 +381,13 @@ class MainActivity : ComponentActivity() {
 
                     val openSearchOnStart = remember { intent?.action == ACTION_SEARCH }
 
+                    // Fresh install (or never decided): offer Google sign-in before anything else.
+                    val showWelcomeOnStart = remember {
+                        (intent?.action == null || intent?.action == Intent.ACTION_MAIN) &&
+                                dataStore[OnboardingDoneKey] != true &&
+                                dataStore[InnerTubeCookieKey]?.let { "SAPISID" in parseCookieString(it) } != true
+                    }
+
                     val shouldShowNavigationBar = remember(navBackStackEntry) {
                         navBackStackEntry?.destination?.route == null ||
                                 navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }
@@ -317,14 +400,17 @@ class MainActivity : ComponentActivity() {
 
                     val playerBottomSheetState = rememberBottomSheetState(
                         dismissedBound = 0.dp,
-                        collapsedBound = bottomInset + (if (shouldShowNavigationBar) NavigationBarHeight else 0.dp) + MiniPlayerHeight,
+                        collapsedBound = bottomInset + (if (shouldShowNavigationBar) NavigationBarHeight else MiniPlayerBottomGap) + MiniPlayerHeight,
                         expandedBound = maxHeight,
                     )
 
                     val playerAwareWindowInsets = remember(bottomInset, shouldShowNavigationBar, playerBottomSheetState.isDismissed) {
                         var bottom = bottomInset
                         if (shouldShowNavigationBar) bottom += NavigationBarHeight
-                        if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
+                        if (!playerBottomSheetState.isDismissed) {
+                            bottom += MiniPlayerHeight
+                            if (!shouldShowNavigationBar) bottom += MiniPlayerBottomGap
+                        }
                         windowsInsets
                             .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                             .add(WindowInsets(top = AppBarHeight, bottom = bottom))
@@ -430,6 +516,7 @@ class MainActivity : ComponentActivity() {
                         NavHost(
                             navController = navController,
                             startDestination = when {
+                                showWelcomeOnStart -> Screens.Welcome
                                 openSearchOnStart -> Screens.Search
                                 (tabOpenedFromShortcut ?: defaultOpenTab) == NavigationTab.HOME -> Screens.Home
                                 else -> Screens.Library

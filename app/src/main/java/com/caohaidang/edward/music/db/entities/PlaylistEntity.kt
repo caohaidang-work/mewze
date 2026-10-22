@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import org.apache.commons.lang3.RandomStringUtils
+import java.time.LocalDateTime
 
 @Immutable
 @Entity(tableName = "playlist")
@@ -13,6 +14,9 @@ data class PlaylistEntity(
     val browseId: String? = null,
 
     val customThumbnail: String? = null,
+
+    /** When the playlist was created / added to the library (follows YouTube Music order when synced). */
+    val createdAt: LocalDateTime? = LocalDateTime.now(),
 ) {
     companion object {
         const val LIKED_PLAYLIST_ID = "LP_LIKED"

@@ -16,6 +16,8 @@ val NavigationBarHeight = 72.dp
 val MiniPlayerHeight = 60.dp
 
 val NavMiniPlayerGap = 6.dp
+// Khoảng cách từ MiniPlayer tới viền dưới khi không có navigation bar
+val MiniPlayerBottomGap = 16.dp
 val QueuePeekHeight = 64.dp
 val AppBarHeight = 64.dp
 

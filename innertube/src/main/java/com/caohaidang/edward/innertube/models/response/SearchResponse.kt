@@ -26,7 +26,7 @@ data class SearchResponse(
         ) {
             @Serializable
             data class Content(
-                val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer,
+                val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer? = null,
             )
         }
     }

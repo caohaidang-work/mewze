@@ -65,6 +65,7 @@ import com.caohaidang.edward.music.ui.component.BottomSheetState
 import com.caohaidang.edward.music.ui.component.DownloadGridMenu
 import com.caohaidang.edward.music.ui.component.GridMenu
 import com.caohaidang.edward.music.ui.component.GridMenuItem
+import com.caohaidang.edward.music.ui.share.ShareSongDialog
 import com.caohaidang.edward.music.ui.component.ListDialog
 import java.time.LocalDateTime
 import kotlin.math.log2
@@ -143,6 +144,20 @@ fun PlayerMenu(
                 }
             }
         }
+    }
+
+    var showShareDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    if (showShareDialog) {
+        ShareSongDialog(
+            song = mediaMetadata,
+            onDismiss = {
+                showShareDialog = false
+                onDismiss()
+            }
+        )
     }
 
     var showTempoPitchDialog by rememberSaveable {
@@ -272,6 +287,13 @@ fun PlayerMenu(
             title = if (autoPlay) R.string.autoplay_on else R.string.autoplay_off
         ) {
             autoPlay = !autoPlay
+        }
+
+        GridMenuItem(
+            icon = R.drawable.share,
+            title = R.string.share
+        ) {
+            showShareDialog = true
         }
 
         GridMenuItem(

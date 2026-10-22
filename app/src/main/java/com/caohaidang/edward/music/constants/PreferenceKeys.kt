@@ -48,6 +48,7 @@ val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoPlayKey = booleanPreferencesKey("autoPlay")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")
 val StopMusicOnTaskClearKey = booleanPreferencesKey("stopMusicOnTaskClear")
+val BatteryPromptShownKey = booleanPreferencesKey("batteryPromptShown")
 
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
@@ -67,6 +68,9 @@ val AlbumSortTypeKey = stringPreferencesKey("albumSortType")
 val AlbumSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 val PlaylistSortTypeKey = stringPreferencesKey("playlistSortType")
 val PlaylistSortDescendingKey = booleanPreferencesKey("playlistSortDescending")
+val LibrarySongsSortKey = stringPreferencesKey("librarySongsSort")
+val LibraryAlbumsSortKey = stringPreferencesKey("libraryAlbumsSort")
+val LibraryPlaylistsSortKey = stringPreferencesKey("libraryPlaylistsSort")
 val ArtistSongSortTypeKey = stringPreferencesKey("artistSongSortType")
 val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescending")
 
@@ -125,7 +129,13 @@ enum class AlbumFilter {
     LIBRARY, LIKED
 }
 
+/** Sort choices of the library pages (liked songs, liked albums, playlists). */
+enum class LibrarySortOption {
+    NEWEST, OLDEST, NAME_AZ, NAME_ZA
+}
+
 val ShowLyricsKey = booleanPreferencesKey("showLyrics")
+val ShowQueueKey = booleanPreferencesKey("showQueue")
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
 val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
 val RomanizeLyricsKey = booleanPreferencesKey("romanizeLyrics")
@@ -150,6 +160,13 @@ val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
+
+// Welcome / login gate shown on first launch.
+val OnboardingDoneKey = booleanPreferencesKey("onboardingDone")
+
+// In-app profile. Lives only on this device and is independent of the Google / YouTube account.
+val ProfileNameKey = stringPreferencesKey("profileName")
+val ProfileAvatarKey = stringPreferencesKey("profileAvatar")
 
 val LanguageCodeToName = mapOf(
     "af" to "Afrikaans",

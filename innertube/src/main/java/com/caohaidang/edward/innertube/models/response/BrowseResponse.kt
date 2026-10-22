@@ -21,7 +21,19 @@ data class BrowseResponse(
     val microformat: Microformat?,
     val responseContext: ResponseContext,
     val background: MusicThumbnailRenderer?,
+    /** Newer shape of "next page" responses (see [com.caohaidang.edward.innertube.pages.shelfChunk]). */
+    val onResponseReceivedActions: List<ResponseAction>? = null,
 ) {
+    @Serializable
+    data class ResponseAction(
+        val appendContinuationItemsAction: AppendContinuationItemsAction? = null,
+    )
+
+    @Serializable
+    data class AppendContinuationItemsAction(
+        val continuationItems: List<kotlinx.serialization.json.JsonElement>? = null,
+    )
+
     @Serializable
     data class Contents(
         val singleColumnBrowseResultsRenderer: Tabs?,

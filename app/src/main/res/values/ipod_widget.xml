@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ip_label" translatable="false">Mewze iPod</string>
+    <string name="ip_description" translatable="false">Classic iPod style now playing widget with click wheel</string>
+    <string name="ip_idle_title" translatable="false">Mewze</string>
+    <string name="ip_idle_artist" translatable="false">Nothing playing</string>
+    <string name="ip_wheel_label" translatable="false">MUSIC</string>
+    <string name="ip_cd_prev" translatable="false">Previous</string>
+    <string name="ip_cd_next" translatable="false">Next</string>
+    <string name="ip_cd_play" translatable="false">Play / pause</string>
+</resources>

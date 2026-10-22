@@ -330,16 +330,20 @@ fun ArtistScreen(
                             title = section.title,
                             onClick = section.moreEndpoint?.let {
                                 {
-                                    navController.navigate("artist/${viewModel.artistId}/items?browseId=${it.browseId}?params=${it.params}")
+                                    val browseId = android.net.Uri.encode(it.browseId)
+                                    val params = it.params?.takeIf { p -> p.isNotBlank() }
+                                        ?.let { p -> "&params=${android.net.Uri.encode(p)}" }
+                                        .orEmpty()
+                                    navController.navigate("artist/${viewModel.artistId}/items?browseId=$browseId$params")
                                 }
                             }
                         )
                     }
 
-                    if ((section.items.firstOrNull() as? SongItem)?.album != null) {
+                    if (section.isList && section.items.all { it is SongItem }) {
                         items(
                             items = section.items,
-                            key = { it.id }
+                            key = { "${section.title}_${it.id}" }
                         ) { song ->
                             MinimalYouTubeListItem(
                                 item = song as SongItem,

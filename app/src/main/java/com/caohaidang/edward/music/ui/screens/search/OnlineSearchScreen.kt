@@ -1,6 +1,13 @@
 package com.caohaidang.edward.music.ui.screens.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -104,11 +111,53 @@ fun OnlineSearchScreen(
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
     ) {
+        if (query.isEmpty() && viewState.history.isNotEmpty()) {
+            item(key = "recent_search_header") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                        .animateItem()
+                ) {
+                    Text(
+                        text = "Tìm kiếm gần đây",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "Xóa",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { database.query { clearSearchHistory() } }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
         items(
             items = viewState.history,
             key = { it.query }
         ) { history ->
-            SuggestionItem(
+            if (query.isEmpty()) {
+                RecentSearchItem(
+                    query = history.query,
+                    onClick = {
+                        onSearch(history.query)
+                        onDismiss()
+                    },
+                    onDelete = {
+                        database.query {
+                            delete(history)
+                        }
+                    },
+                    modifier = Modifier.animateItem()
+                )
+            } else SuggestionItem(
                 query = history.query,
                 online = false,
                 onClick = {
@@ -296,6 +345,59 @@ fun OnlineSearchScreen(
                         }
                     }
                     .animateItem()
+            )
+        }
+    }
+}
+
+@Composable
+fun RecentSearchItem(
+    modifier: Modifier = Modifier,
+    query: String,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .clickable(onClick = onClick)
+            .padding(start = 16.dp, end = 8.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.history),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Text(
+            text = query,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.alpha(0.6f)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.more_horiz),
+                contentDescription = "Xóa khỏi lịch sử"
             )
         }
     }

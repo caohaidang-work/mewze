@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cdw_description" translatable="false">Win98-style CD Player widget</string>
+    <string name="cdw_window_title" translatable="false">CD Player</string>
+    <string name="cdw_label_artist" translatable="false">Artist:</string>
+    <string name="cdw_label_track" translatable="false">Track:</string>
+    <string name="cdw_idle_artist" translatable="false">Mewze</string>
+    <string name="cdw_idle_track" translatable="false">No disc</string>
+    <string name="cdw_cd_prev" translatable="false">Previous track</string>
+    <string name="cdw_cd_next" translatable="false">Next track</string>
+    <string name="cdw_cd_play" translatable="false">Play / pause</string>
+    <string name="cdw_cd_stop" translatable="false">Stop</string>
+    <string name="cdw_cd_like" translatable="false">Like current song</string>
+</resources>

@@ -66,8 +66,8 @@ fun MiniPlayer(
             .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 0.dp)
             .glassSurface(
                 shape = RoundedCornerShape(22.dp),
-                tintAlpha = 0.76f,
-                shadowElevation = 10.dp
+                tintAlpha = 0.24f,
+                shadowElevation = 6.dp
             )
     ) {
         Row(

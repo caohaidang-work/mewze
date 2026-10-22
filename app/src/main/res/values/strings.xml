@@ -357,4 +357,7 @@
     <string name="player_effects">Player effects</string>
     <string name="flowing_artwork">Moving artwork</string>
     <string name="flowing_artwork_desc">Album art slowly zooms and drifts, with soft colors moving beneath it</string>
+    <string name="queue_clear">Clear</string>
+    <string name="add_songs_to_queue">Add songs to queue</string>
+    <string name="queue_autoplay_desc">Similar music will keep playing</string>
 </resources>

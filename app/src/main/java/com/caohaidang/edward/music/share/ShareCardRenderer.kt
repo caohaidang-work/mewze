@@ -75,7 +75,7 @@ object ShareCardRenderer {
         if (typefaces.isNotEmpty()) return
         val app = context.applicationContext
         if (logo == null) {
-            logo = runCatching { BitmapFactory.decodeResource(app.resources, R.drawable.logo) }.getOrNull()
+            logo = runCatching { BitmapFactory.decodeResource(app.resources, R.drawable.logo_share) }.getOrNull()
         }
         typefaces = Weight.values().associateWith { w ->
             runCatching { ResourcesCompat.getFont(app, w.res) }.getOrNull()
@@ -120,6 +120,13 @@ object ShareCardRenderer {
         while (layout.height > areaBottom - areaTop && size > 40f) {
             size -= 4f
             layout = buildLayout(text, paint(theme.text, size, Weight.Bold), width, Layout.Alignment.ALIGN_NORMAL, spacing = 1.18f)
+        }
+        // Even at the smallest size a long selection can still be taller than the card area
+        // (it used to run over the song panel). Cut it with an ellipsis instead of overflowing.
+        if (layout.height > areaBottom - areaTop) {
+            val lineHeight = (layout.height.toFloat() / layout.lineCount).coerceAtLeast(1f)
+            val fit = ((areaBottom - areaTop) / lineHeight).toInt().coerceAtLeast(1)
+            layout = buildLayout(text, paint(theme.text, size, Weight.Bold), width, Layout.Alignment.ALIGN_NORMAL, maxLines = fit, spacing = 1.18f)
         }
 
         val y = areaTop + ((areaBottom - areaTop) - layout.height).coerceAtLeast(0f) / 2f
@@ -201,10 +208,11 @@ object ShareCardRenderer {
         totalMinutes: Long,
         topSong: MediaMetadata?,
         topSongPlays: Int,
+        songs: List<Pair<MediaMetadata, Int>>,
         texts: WrappedTexts,
         images: WrappedImages,
         theme: CardTheme,
-    ): Bitmap = NotebookWrappedRenderer.overview(context, totalMinutes, topSong, topSongPlays, texts, images, theme)
+    ): Bitmap = NotebookWrappedRenderer.overview(context, totalMinutes, topSong, topSongPlays, songs, texts, images, theme)
 
     fun renderWrappedSongs(
         context: Context,

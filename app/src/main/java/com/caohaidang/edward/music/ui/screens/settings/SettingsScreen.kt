@@ -114,7 +114,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Image(
-                painter = painterResource(R.drawable.logo),
+                painter = painterResource(R.drawable.logo_app),
                 contentDescription = null,
                 modifier = Modifier
                     .size(88.dp)

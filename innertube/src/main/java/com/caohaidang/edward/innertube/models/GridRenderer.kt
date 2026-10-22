@@ -22,5 +22,10 @@ data class GridRenderer(
     data class Item(
         val musicNavigationButtonRenderer: MusicNavigationButtonRenderer?,
         val musicTwoRowItemRenderer: MusicTwoRowItemRenderer?,
+        val continuationItemRenderer: ContinuationItemRenderer? = null,
     )
 }
+
+@JvmName("trailingContinuationOfGrid")
+fun List<GridRenderer.Item>?.trailingContinuation(): String? =
+    this?.lastOrNull { it.continuationItemRenderer != null }?.continuationItemRenderer?.token

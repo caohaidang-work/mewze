@@ -321,7 +321,7 @@ fun SongGridItem(
             isActive = isActive,
             isPlaying = isPlaying,
             shape = RoundedCornerShape(ThumbnailCornerRadius),
-            modifier = Modifier.size(GridThumbnailHeight)
+            modifier = Modifier.fillMaxSize()
         )
     },
     fillMaxWidth = fillMaxWidth,
@@ -798,11 +798,13 @@ fun ItemThumbnail(
                 )
             }
         } else {
+            // Fill the (square) slot and crop, so covers of any aspect ratio end up the same size.
             AsyncImage(
                 model = thumbnailUrl?.resize(544, 544),
                 contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .clip(shape)
             )
         }

@@ -7,12 +7,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 fun Modifier.fadingEdge(
     left: Dp? = null,
     top: Dp? = null,
     right: Dp? = null,
     bottom: Dp? = null,
+    topStart: Dp = 0.dp,
 ) = graphicsLayer(alpha = 0.99f)
     .drawWithContent {
         drawContent()
@@ -23,7 +25,7 @@ fun Modifier.fadingEdge(
                         Color.Transparent,
                         Color.Black
                     ),
-                    startY = 0f,
+                    startY = topStart.toPx(),
                     endY = top.toPx()
                 ),
                 blendMode = BlendMode.DstIn

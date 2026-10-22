@@ -1,5 +1,18 @@
 @file:Suppress("UnstableApiUsage")
 
+import java.util.Properties
+
+// Spotify Client ID (public, not a secret) comes from, in order: -PSPOTIFY_CLIENT_ID, the
+// SPOTIFY_CLIENT_ID env var, or SPOTIFY_CLIENT_ID in local.properties. If empty, the app asks for it.
+val spotifyClientId: String = (
+    providers.gradleProperty("SPOTIFY_CLIENT_ID").orNull
+        ?: System.getenv("SPOTIFY_CLIENT_ID")
+        ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
+            Properties().apply { f.inputStream().use(::load) }.getProperty("SPOTIFY_CLIENT_ID")
+        }
+        ?: ""
+).trim()
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -18,8 +31,9 @@ android {
         applicationId = "com.caohaidang.edward.music"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "2.0.0"
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"$spotifyClientId\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

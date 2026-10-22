@@ -57,6 +57,14 @@ class InnerTube {
             })
         }
 
+        // Without explicit timeouts a slow or stalled connection hangs a sync for a long time (or
+        // dies on the 10 s OkHttp default while a large library page is still downloading).
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 45_000
+            requestTimeoutMillis = 90_000
+        }
+
         install(ContentEncoding) {
             brotli(1.0F)
             gzip(0.9F)

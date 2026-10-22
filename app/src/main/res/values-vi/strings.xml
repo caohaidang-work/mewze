@@ -314,4 +314,7 @@
     <string name="player_effects">Hiệu ứng trình phát</string>
     <string name="flowing_artwork">Ảnh bìa chuyển động</string>
     <string name="flowing_artwork_desc">Ảnh bìa zoom và lướt rất chậm, màu nền phía dưới trôi nhẹ</string>
+    <string name="queue_clear">Xóa</string>
+    <string name="add_songs_to_queue">Thêm bài hát vào hàng đợi</string>
+    <string name="queue_autoplay_desc">Nhạc tương tự sẽ tiếp tục phát</string>
 </resources>

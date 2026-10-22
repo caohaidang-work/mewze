@@ -25,6 +25,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
+        env:
+          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK

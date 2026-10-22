@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Win98 "CD Player" home-screen widget.
+Only RemoteViews-safe classes are used (no <View>, no Compose, no ConstraintLayout).
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cdw_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/cdw_window"
+    android:padding="3dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Title bar -->
+        <LinearLayout
+            android:id="@+id/cdw_titlebar"
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
+            android:background="@drawable/cdw_titlebar"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/cdw_ic_title" />
+
+            <ImageView
+                android:id="@+id/cdw_title"
+                android:layout_width="0dp"
+                android:layout_height="14dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:scaleType="fitXY" />
+
+            <ImageView
+                android:id="@+id/cdw_min"
+                android:layout_width="16dp"
+                android:layout_height="14dp"
+                android:background="@drawable/cdw_btn"
+                android:importantForAccessibility="no"
+                android:scaleType="center"
+                android:src="@drawable/cdw_ic_min" />
+            <ImageView
+                android:id="@+id/cdw_max"
+                android:layout_width="16dp"
+                android:layout_height="14dp"
+                android:background="@drawable/cdw_btn"
+                android:importantForAccessibility="no"
+                android:scaleType="center"
+                android:src="@drawable/cdw_ic_max" />
+            <ImageView
+                android:id="@+id/cdw_close"
+                android:layout_width="16dp"
+                android:layout_height="14dp"
+                android:background="@drawable/cdw_btn"
+                android:importantForAccessibility="no"
+                android:scaleType="center"
+                android:src="@drawable/cdw_ic_close"
+                android:layout_marginStart="2dp" />
+        </LinearLayout>
+
+        <!-- Body -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="5dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="5dp"
+            android:paddingBottom="2dp">
+
+            <FrameLayout
+                android:id="@+id/cdw_art_frame"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:background="@drawable/cdw_sunken"
+                android:padding="2dp">
+
+                <ImageView
+                    android:id="@+id/cdw_art"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/cdw_disc" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="18dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/cdw_label_artist"
+                        android:layout_width="36dp"
+                        android:layout_height="14dp"
+                        android:scaleType="fitXY" />
+
+                    <LinearLayout
+                        android:id="@+id/cdw_artist_field"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@drawable/cdw_sunken"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="2dp">
+
+                        <ImageView
+                            android:id="@+id/cdw_artist"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:scaleType="fitXY" />
+
+                        <ImageView
+                            android:layout_width="10dp"
+                            android:layout_height="wrap_content"
+                            android:importantForAccessibility="no"
+                            android:scaleType="center"
+                            android:src="@drawable/cdw_ic_tag" />
+
+                        <ImageView
+                            android:layout_width="12dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="1dp"
+                            android:background="@drawable/cdw_raised"
+                            android:importantForAccessibility="no"
+                            android:scaleType="center"
+                            android:src="@drawable/cdw_ic_arrow" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="18dp"
+                    android:layout_marginTop="2dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/cdw_label_track"
+                        android:layout_width="36dp"
+                        android:layout_height="14dp"
+                        android:scaleType="fitXY" />
+
+                    <LinearLayout
+                        android:id="@+id/cdw_track_field"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@drawable/cdw_sunken"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="2dp">
+
+                        <ImageView
+                            android:id="@+id/cdw_track"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:scaleType="fitXY" />
+
+                        <ImageView
+                            android:layout_width="10dp"
+                            android:layout_height="wrap_content"
+                            android:importantForAccessibility="no"
+                            android:scaleType="center"
+                            android:src="@drawable/cdw_ic_tag" />
+
+                        <ImageView
+                            android:layout_width="12dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="1dp"
+                            android:background="@drawable/cdw_raised"
+                            android:importantForAccessibility="no"
+                            android:scaleType="center"
+                            android:src="@drawable/cdw_ic_arrow" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/cdw_slider"
+                    android:layout_width="match_parent"
+                    android:layout_height="14dp"
+                    android:layout_marginTop="2dp"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/cdw_slider_default" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="22dp"
+                    android:layout_marginTop="2dp"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/cdw_btn_prev"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/cdw_btn"
+                        android:contentDescription="@string/cdw_cd_prev"
+                        android:scaleType="center"
+                        android:src="@drawable/cdw_ic_prev"
+                        android:layout_weight="1"  />
+                    <ImageView
+                        android:id="@+id/cdw_btn_next"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/cdw_btn"
+                        android:contentDescription="@string/cdw_cd_next"
+                        android:scaleType="center"
+                        android:src="@drawable/cdw_ic_next"
+                        android:layout_weight="1"
+                        android:layout_marginStart="3dp" />
+                    <ImageView
+                        android:id="@+id/cdw_btn_play"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/cdw_btn"
+                        android:contentDescription="@string/cdw_cd_play"
+                        android:scaleType="center"
+                        android:src="@drawable/cdw_ic_play"
+                        android:layout_weight="1"
+                        android:layout_marginStart="3dp" />
+                    <ImageView
+                        android:id="@+id/cdw_btn_stop"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/cdw_btn"
+                        android:contentDescription="@string/cdw_cd_stop"
+                        android:scaleType="center"
+                        android:src="@drawable/cdw_ic_stop"
+                        android:layout_weight="1"
+                        android:layout_marginStart="3dp" />
+                    <ImageView
+                        android:id="@+id/cdw_btn_rec"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/cdw_btn"
+                        android:contentDescription="@string/cdw_cd_like"
+                        android:scaleType="center"
+                        android:src="@drawable/cdw_ic_record"
+                        android:layout_weight="1"
+                        android:layout_marginStart="3dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

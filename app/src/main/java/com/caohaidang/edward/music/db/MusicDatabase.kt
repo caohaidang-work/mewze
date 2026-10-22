@@ -22,6 +22,9 @@ class MusicDatabase(
     val openHelper: SupportSQLiteOpenHelper
         get() = delegate.openHelper
 
+    val invalidationTracker: InvalidationTracker
+        get() = delegate.invalidationTracker
+
     fun query(block: MusicDatabase.() -> Unit) = with(delegate) {
         queryExecutor.execute {
             block(this@MusicDatabase)
@@ -40,6 +43,9 @@ class MusicDatabase(
         delegate.runInTransaction(Callable<R> { block(this@MusicDatabase) })
 
     fun close() = delegate.close()
+
+    /** Wipes everything tied to the signed-in account (library, listen history, search history...). Call off the main thread. */
+    fun clearAllUserData() = delegate.clearAllTables()
 }
 
 @Database(
@@ -63,7 +69,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -88,9 +94,17 @@ abstract class InternalDatabase : RoomDatabase() {
         fun newInstance(context: Context): MusicDatabase =
             MusicDatabase(
                 delegate = Room.databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_12_13, MIGRATION_13_14)
                     .build()
             )
+    }
+}
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE playlist ADD COLUMN createdAt INTEGER")
+        // Keep the existing (creation) order: older rows get smaller timestamps.
+        database.execSQL("UPDATE playlist SET createdAt = 1700000000000 + rowid * 1000")
     }
 }
 

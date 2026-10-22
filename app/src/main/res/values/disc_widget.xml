@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dw_label" translatable="false">Mewze Disc</string>
+    <string name="dw_description" translatable="false">Spinning-disc style now playing widget</string>
+    <string name="dw_idle_artist" translatable="false">Mewze</string>
+    <string name="dw_idle_track" translatable="false">Nothing playing</string>
+    <string name="dw_cd_play" translatable="false">Play / pause</string>
+</resources>

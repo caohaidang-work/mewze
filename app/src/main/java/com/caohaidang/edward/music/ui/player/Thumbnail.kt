@@ -3,6 +3,7 @@ package com.caohaidang.edward.music.ui.player
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.constants.ShowLyricsKey
+import com.caohaidang.edward.music.constants.ShowQueueKey
 import com.caohaidang.edward.music.ui.component.Lyrics
 import com.caohaidang.edward.music.utils.rememberPreference
 
@@ -31,7 +33,8 @@ fun Thumbnail(
     val currentView = LocalView.current
 
     val error by playerConnection.error.collectAsState()
-    val showLyrics by rememberPreference(ShowLyricsKey, false)
+    val showQueue by rememberPreference(ShowQueueKey, false)
+    val showLyrics = rememberPreference(ShowLyricsKey, false).value && !showQueue
 
     DisposableEffect(showLyrics) {
         currentView.keepScreenOn = showLyrics
@@ -62,8 +65,9 @@ fun Thumbnail(
 
         AnimatedVisibility(
             visible = showLyrics && error == null,
-            enter = fadeIn(),
-            exit = fadeOut()
+            // vào chậm hơn một nhịp để không chồng lên danh sách chờ đang mờ dần
+            enter = fadeIn(tween(200, delayMillis = 120)),
+            exit = fadeOut(tween(120))
         ) {
             Lyrics(sliderPositionProvider = sliderPositionProvider)
         }

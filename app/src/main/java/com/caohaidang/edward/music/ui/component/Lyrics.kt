@@ -1,5 +1,38 @@
 package com.caohaidang.edward.music.ui.component
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import coil.compose.AsyncImage
+import com.caohaidang.edward.innertube.YouTube
+import com.caohaidang.edward.music.LocalDatabase
+import com.caohaidang.edward.music.db.entities.SongEntity
+import com.caohaidang.edward.music.models.MediaMetadata
+import com.caohaidang.edward.music.utils.reportException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -13,6 +46,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,6 +94,7 @@ import com.caohaidang.edward.music.constants.TranslateLyricsKey
 import com.caohaidang.edward.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.caohaidang.edward.music.lyrics.LyricsEntry
 import com.caohaidang.edward.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
+import com.caohaidang.edward.music.lyrics.LyricsUtils
 import com.caohaidang.edward.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.caohaidang.edward.music.lyrics.LyricsUtils.parseLyrics
 import com.caohaidang.edward.music.ui.component.shimmer.ShimmerHost
@@ -85,7 +120,7 @@ fun Lyrics(
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
 
-    val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.CENTER)
+    val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.SIDED)
     var translationEnabled by rememberPreference(TranslateLyricsKey, true)
     var romanizationEnabled by rememberPreference(RomanizeLyricsKey, true)
     var targetLanguage by rememberPreference(TranslateLanguageKey, TranslationHelper.DEFAULT_LANGUAGE)
@@ -150,6 +185,17 @@ fun Lyrics(
         }
     }
 
+    // Vị trí phát cập nhật theo từng khung hình — chỉ dòng đang hát đọc giá trị này
+    // nên chỉ dòng đó recompose (hiệu ứng karaoke chạy theo giọng hát).
+    val karaokePosition = remember { mutableLongStateOf(0L) }
+    LaunchedEffect(lyrics) {
+        if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) return@LaunchedEffect
+        while (isActive) {
+            withFrameNanos { }
+            karaokePosition.longValue = sliderPositionProvider() ?: playerConnection.player.currentPosition
+        }
+    }
+
     LaunchedEffect(isSeeking, lastPreviewTime) {
         if (isSeeking) {
             lastPreviewTime = 0L
@@ -188,7 +234,11 @@ fun Lyrics(
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
                 .asPaddingValues(),
             modifier = Modifier
-                .fadingEdge(vertical = 64.dp)
+                .fadingEdge(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 190.dp,
+                    bottom = 64.dp,
+                    topStart = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 70.dp
+                )
                 .nestedScroll(remember {
                     object : NestedScrollConnection {
                         override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
@@ -228,15 +278,36 @@ fun Lyrics(
                     items = lines
                 ) { index, item ->
                     val extra = extras[index]
-                    val textAlign = when (playerTextAlignment) {
-                        PlayerTextAlignment.SIDED -> TextAlign.Start
-                        PlayerTextAlignment.CENTER -> TextAlign.Center
-                    }
-                    Column(
-                        horizontalAlignment = when (playerTextAlignment) {
-                            PlayerTextAlignment.SIDED -> Alignment.Start
-                            PlayerTextAlignment.CENTER -> Alignment.CenterHorizontally
+                    val centered = playerTextAlignment == PlayerTextAlignment.CENTER
+                    val textAlign = if (centered) TextAlign.Center else TextAlign.Start
+                    val isActive = !isSynced || index == displayedCurrentLineIndex
+                    val distance = if (!isSynced || displayedCurrentLineIndex < 0) 0
+                    else abs(index - displayedCurrentLineIndex)
+
+                    val lineAlpha by animateFloatAsState(
+                        targetValue = when {
+                            !isSynced || distance == 0 -> 1f
+                            distance == 1 -> 0.55f
+                            distance == 2 -> 0.42f
+                            else -> 0.3f
                         },
+                        animationSpec = tween(350),
+                        label = "lyricAlpha"
+                    )
+                    val lineScale by animateFloatAsState(
+                        targetValue = if (isActive) 1f else 0.94f,
+                        animationSpec = tween(350),
+                        label = "lyricScale"
+                    )
+                    // Càng xa dòng đang hát càng mờ (blur chỉ có hiệu lực trên Android 12+).
+                    val lineBlur by animateDpAsState(
+                        targetValue = if (isActive) 0.dp else minOf(distance * 2.5f, 10f).dp,
+                        animationSpec = tween(350),
+                        label = "lyricBlur"
+                    )
+
+                    Column(
+                        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
                         modifier = Modifier
                             .fillMaxWidth()
                             .combinedClickable(
@@ -250,28 +321,66 @@ fun Lyrics(
                                     if (item.text.isNotBlank()) shareInitialLine = item.text.trim()
                                 }
                             )
-                            .padding(horizontal = 24.dp, vertical = 8.dp)
-                            .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                            .graphicsLayer {
+                                alpha = lineAlpha
+                                scaleX = lineScale
+                                scaleY = lineScale
+                                transformOrigin = TransformOrigin(if (centered) 0.5f else 0f, 0.5f)
+                            }
+                            .blur(lineBlur, BlurredEdgeTreatment.Unbounded)
                     ) {
-                        Text(
-                            text = item.text,
-                            fontSize = 20.sp,
-                            color = if (index == displayedCurrentLineIndex) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f),
-                            textAlign = textAlign,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        val karaoke = isSynced && index == displayedCurrentLineIndex &&
+                            index > 0 && item.text.isNotBlank()
+                        if (karaoke) {
+                            val endTime = lines.getOrNull(index + 1)?.time ?: (item.time + 5000L)
+                            val sung = LyricsUtils.sungChars(item, endTime, karaokePosition.longValue)
+                            val dim = 0.4f
+                            val annotated = buildAnnotatedString {
+                                append(item.text)
+                                val n = item.text.length
+                                val full = sung.toInt().coerceIn(0, n)
+                                if (full > 0) addStyle(SpanStyle(color = Color.White), 0, full)
+                                if (full < n) {
+                                    val frac = (sung - full).coerceIn(0f, 1f)
+                                    addStyle(
+                                        SpanStyle(color = Color.White.copy(alpha = dim + (1f - dim) * frac)),
+                                        full, full + 1
+                                    )
+                                }
+                            }
+                            Text(
+                                text = annotated,
+                                fontSize = 30.sp,
+                                lineHeight = 36.sp,
+                                color = Color.White.copy(alpha = dim),
+                                textAlign = textAlign,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = item.text,
+                                fontSize = if (isSynced) 30.sp else 24.sp,
+                                lineHeight = if (isSynced) 36.sp else 30.sp,
+                                color = Color.White,
+                                textAlign = textAlign,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         if (romanizationEnabled && !extra?.romanization.isNullOrBlank()) {
                             Text(
                                 text = extra?.romanization.orEmpty(),
-                                fontSize = 15.sp,
-                                fontStyle = FontStyle.Italic,
-                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                                fontSize = 18.sp,
+                                lineHeight = 23.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.92f),
                                 textAlign = textAlign,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 2.dp)
+                                    .padding(top = 4.dp)
                             )
                         }
 
@@ -279,12 +388,13 @@ fun Lyrics(
                             Text(
                                 text = extra?.translation.orEmpty(),
                                 fontSize = 16.sp,
+                                lineHeight = 21.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                                color = Color.White.copy(alpha = 0.72f),
                                 textAlign = textAlign,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 2.dp)
+                                    .padding(top = 4.dp)
                             )
                         }
                     }
@@ -331,50 +441,141 @@ fun Lyrics(
                     onDismiss = { shareInitialLine = null }
                 )
             }
-            Row(
+            LyricsHeader(
+                mediaMetadata = mediaMetadata,
+                onMoreClick = {
+                    menuState.show {
+                        LyricsMenu(
+                            lyricsProvider = { lyricsEntity },
+                            mediaMetadataProvider = { mediaMetadata },
+                            onDismiss = menuState::dismiss
+                        )
+                    }
+                },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp)
-            ) {
-                if (!lyrics.isNullOrEmpty() && lyrics != LYRICS_NOT_FOUND) {
-                    IconButton(
-                        onClick = {
-                            shareInitialLine = lines.getOrNull(currentLineIndex)?.text?.trim().orEmpty()
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.share),
-                            contentDescription = stringResource(R.string.share_lyrics)
-                        )
-                    }
-                }
-                if (!lyrics.isNullOrEmpty() && lyrics != LYRICS_NOT_FOUND) {
-                    IconButton(onClick = { showTranslateDialog = true }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.translate),
-                            contentDescription = stringResource(R.string.lyrics_translation),
-                            modifier = Modifier.alpha(if (translationEnabled || romanizationEnabled) 1f else 0.5f)
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = {
-                        menuState.show {
-                            LyricsMenu(
-                                lyricsProvider = { lyricsEntity },
-                                mediaMetadataProvider = { mediaMetadata },
-                                onDismiss = menuState::dismiss
-                            )
-                        }
-                    }
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.more_horiz),
-                        contentDescription = null
-                    )
-                }
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 20.dp)
+            )
+
+            if (!lyrics.isNullOrEmpty() && lyrics != LYRICS_NOT_FOUND) {
+                LyricsCircleButton(
+                    icon = R.drawable.translate,
+                    contentDescription = stringResource(R.string.lyrics_translation),
+                    active = translationEnabled || romanizationEnabled,
+                    onClick = { showTranslateDialog = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 24.dp)
+                        .offset(y = 14.dp)
+                )
             }
         }
+    }
+}
+
+/** Đầu trang lyrics: ảnh bìa nhỏ, tên bài, nghệ sĩ, nút yêu thích và menu. */
+@Composable
+private fun LyricsHeader(
+    mediaMetadata: MediaMetadata,
+    onMoreClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val database = LocalDatabase.current
+    val scope = rememberCoroutineScope()
+    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    val liked = currentSong?.song?.liked == true
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        AsyncImage(
+            model = mediaMetadata.thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = mediaMetadata.title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = mediaMetadata.artists.joinToString { it.name },
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        LyricsCircleButton(
+            icon = if (liked) R.drawable.favorite else R.drawable.favorite_border,
+            contentDescription = null,
+            active = true,
+            onClick = {
+                val song = currentSong
+                val wasLiked = song?.song?.liked == true
+                database.query {
+                    if (song == null) {
+                        insert(mediaMetadata, SongEntity::toggleLike)
+                    } else {
+                        update(song.song.toggleLike())
+                    }
+                }
+                scope.launch(Dispatchers.IO) {
+                    if (YouTube.cookie != null) {
+                        val result = if (!wasLiked) YouTube.like(mediaMetadata.id) else YouTube.unlike(mediaMetadata.id)
+                        result.onFailure { reportException(it) }
+                    }
+                }
+            }
+        )
+        Spacer(Modifier.width(8.dp))
+        LyricsCircleButton(
+            icon = R.drawable.more_horiz,
+            contentDescription = null,
+            active = true,
+            onClick = onMoreClick
+        )
+    }
+}
+
+@Composable
+private fun LyricsCircleButton(
+    icon: Int,
+    contentDescription: String?,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.2f))
+            .clickable(onClick = onClick)
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier
+                .size(20.dp)
+                .alpha(if (active) 1f else 0.5f)
+        )
     }
 }
 

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.database.SQLException
 import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Binder
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
@@ -62,9 +63,11 @@ import com.caohaidang.edward.music.constants.AudioQualityKey
 import com.caohaidang.edward.music.constants.AutoLoadMoreKey
 import com.caohaidang.edward.music.constants.AutoPlayKey
 import com.caohaidang.edward.music.constants.AutoSkipNextOnErrorKey
+import com.caohaidang.edward.music.constants.StopMusicOnTaskClearKey
 import com.caohaidang.edward.music.constants.HideExplicitKey
 import com.caohaidang.edward.music.constants.MediaSessionConstants.CommandToggleLibrary
 import com.caohaidang.edward.music.constants.MediaSessionConstants.CommandToggleLike
+import com.caohaidang.edward.music.widget.CdPlayerWidgetUpdater
 import com.caohaidang.edward.music.constants.MediaSessionConstants.CommandToggleRepeatMode
 import com.caohaidang.edward.music.constants.MediaSessionConstants.CommandToggleShuffle
 import com.caohaidang.edward.music.constants.PauseListenHistoryKey
@@ -108,6 +111,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -161,6 +165,10 @@ class MusicService : MediaLibraryService(),
 
     private var currentQueue: Queue = EmptyQueue
     private var autoPlayJob: Job? = null
+    private var retryJob: Job? = null
+    private var retryMediaId: String? = null
+    private var retryCount = 0
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var queueLoadCount = 0
     private val queueLoading get() = queueLoadCount > 0
     var queueTitle: String? = null
@@ -188,6 +196,7 @@ class MusicService : MediaLibraryService(),
 
     lateinit var player: ExoPlayer
     private lateinit var mediaSession: MediaLibrarySession
+    private lateinit var widgetUpdater: CdPlayerWidgetUpdater
 
     private val streamUrlCache = ConcurrentHashMap<String, ResolvedStream>()
     private val streamRefreshInProgress = ConcurrentHashMap.newKeySet<String>()
@@ -199,7 +208,7 @@ class MusicService : MediaLibraryService(),
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider(this, { NOTIFICATION_ID }, CHANNEL_ID, R.string.music_player)
                 .apply {
-                    setSmallIcon(R.drawable.small_icon)
+                    setSmallIcon(R.drawable.logo_notification)
                 }
         )
         player = ExoPlayer.Builder(this)
@@ -239,11 +248,17 @@ class MusicService : MediaLibraryService(),
             .build()
         player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
 
+        // Home-screen "CD Player" widget: mirrors track / play state / liked flag.
+        widgetUpdater = CdPlayerWidgetUpdater(this, scope, player) { currentSong.value?.song?.liked == true }
+        widgetUpdater.start()
+        scope.launch { currentSong.collect { widgetUpdater.refresh() } }
+
         val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
         val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
         controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
 
         connectivityManager = getSystemService()!!
+        registerNetworkCallback()
 
         combine(playerVolume, normalizeFactor) { playerVolume, normalizeFactor ->
             playerVolume * normalizeFactor
@@ -520,43 +535,149 @@ class MusicService : MediaLibraryService(),
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (dataStore.get(AutoLoadMoreKey, true) &&
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
-            player.mediaItemCount - player.currentMediaItemIndex <= 5 &&
+            songsLeftInPlayOrder(6) <= 5 &&
             currentQueue.hasNextPage()
         ) {
             scope.launch(SilentHandler) {
                 val mediaItems = currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false))
                 if (player.playbackState != STATE_IDLE) {
-                    player.addMediaItems(mediaItems)
+                    appendItems(mediaItems)
                 }
             }
         }
         maybeAutoPlay()
     }
 
+    /**
+     * How many songs are still ahead of the current one *in play order* (up to [limit]).
+     * Using the timeline keeps this correct in shuffle mode, where "index + 1" is meaningless.
+     */
+    private fun songsLeftInPlayOrder(limit: Int): Int {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty) return 0
+        var index = player.currentMediaItemIndex
+        var count = 0
+        while (count < limit) {
+            val next = timeline.getNextWindowIndex(index, REPEAT_MODE_OFF, player.shuffleModeEnabled)
+            if (next == C.INDEX_UNSET) break
+            index = next
+            count++
+        }
+        return count
+    }
+
+    /** Adds songs to the end of the queue; in shuffle mode they also go to the end of the shuffle order. */
+    private fun appendItems(items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        val oldCount = player.mediaItemCount
+        player.addMediaItems(items)
+        if (player.shuffleModeEnabled && oldCount > 0) keepNewItemsLastInShuffle(oldCount)
+    }
+
+    private fun keepNewItemsLastInShuffle(oldCount: Int) {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty) return
+        val order = ArrayList<Int>(timeline.windowCount)
+        var index = timeline.getFirstWindowIndex(true)
+        while (index != C.INDEX_UNSET) {
+            order.add(index)
+            index = timeline.getNextWindowIndex(index, REPEAT_MODE_OFF, true)
+        }
+        val reordered = order.filter { it < oldCount } + order.filter { it >= oldCount }
+        if (reordered.size == player.mediaItemCount) {
+            player.setShuffleOrder(DefaultShuffleOrder(reordered.toIntArray(), System.currentTimeMillis()))
+        }
+    }
+
+    private suspend fun fetchAutoPlayItems(): List<MediaItem> {
+        val seed = player.currentMetadata
+        val queueSnapshot = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+        val exclude = queueSnapshot.map { it.mediaId }.toSet()
+        val recent = queueSnapshot
+            .take(player.currentMediaItemIndex + 1)
+            .mapNotNull { it.metadata }
+            .takeLast(6)
+        return AutoPlayRecommender(database).recommend(
+            seed = seed,
+            exclude = exclude,
+            count = 12,
+            hideExplicit = dataStore.get(HideExplicitKey, false),
+            recentSeeds = recent,
+        )
+    }
+
     private fun maybeAutoPlay() {
         if (!dataStore.get(AutoPlayKey, true)) return
         if (queueLoading || autoPlayJob?.isActive == true) return
         if (player.mediaItemCount == 0 || player.playbackState == STATE_IDLE) return
-        if (player.repeatMode != REPEAT_MODE_OFF || player.shuffleModeEnabled) return
+        if (player.repeatMode != REPEAT_MODE_OFF) return
         if (currentQueue.hasNextPage()) return
-        if (player.mediaItemCount - player.currentMediaItemIndex > 2) return
+        // Works in shuffle mode too: refill when two or fewer songs are left in play order.
+        if (songsLeftInPlayOrder(3) > 2) return
 
-        val seed = player.currentMetadata
-        val exclude = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-        val hideExplicit = dataStore.get(HideExplicitKey, false)
         autoPlayJob = scope.launch(SilentHandler) {
-            val recommended = AutoPlayRecommender(database).recommend(seed, exclude, 12, hideExplicit)
+            val recommended = fetchAutoPlayItems()
             if (recommended.isNotEmpty() && player.playbackState != STATE_IDLE) {
-                player.addMediaItems(recommended)
+                appendItems(recommended)
+            }
+        }
+    }
+
+    /**
+     * The last song finished before autoplay had anything queued (slow/offline fetch, or autoplay
+     * was still running). Instead of silently stopping, get songs now and carry on.
+     */
+    private fun continueAfterQueueEnded() {
+        if (!dataStore.get(AutoPlayKey, true)) return
+        if (player.repeatMode != REPEAT_MODE_OFF || player.mediaItemCount == 0) return
+        if (sleepTimer.pauseWhenSongEnd) {
+            sleepTimer.clear()
+            return
+        }
+        scope.launch(SilentHandler) {
+            autoPlayJob?.join()
+            if (player.playbackState != Player.STATE_ENDED) return@launch
+            if (player.hasNextMediaItem()) {
+                player.seekToNextMediaItem()
+                player.playWhenReady = true
+                return@launch
+            }
+            if (currentQueue.hasNextPage()) {
+                val more = currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false))
+                if (more.isNotEmpty() && player.playbackState == Player.STATE_ENDED) {
+                    val first = player.mediaItemCount
+                    appendItems(more)
+                    player.seekTo(first, 0L)
+                    player.playWhenReady = true
+                    return@launch
+                }
+            }
+            val recommended = fetchAutoPlayItems()
+            if (recommended.isNotEmpty() && player.playbackState == Player.STATE_ENDED) {
+                val first = player.mediaItemCount
+                appendItems(recommended)
+                player.seekTo(first, 0L)
+                player.playWhenReady = true
             }
         }
     }
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
-        if (playbackState == STATE_IDLE) {
-            currentQueue = EmptyQueue
-            player.shuffleModeEnabled = false
-            queueTitle = null
+        when (playbackState) {
+            // A playback *error* also lands in IDLE. That must not wipe the queue state or switch
+            // shuffle off (it used to, which is why random mode "forgot" itself after a hiccup).
+            STATE_IDLE -> if (player.playerError == null) {
+                currentQueue = EmptyQueue
+                player.shuffleModeEnabled = false
+                queueTitle = null
+            }
+
+            Player.STATE_READY -> {
+                retryCount = 0
+                retryMediaId = null
+            }
+
+            Player.STATE_ENDED -> continueAfterQueueEnded()
         }
     }
 
@@ -597,90 +718,79 @@ class MusicService : MediaLibraryService(),
     override fun onPlayerError(
         error: PlaybackException
     ) {
-        val mediaId =
-            player.currentMediaItem
-                ?.mediaId
-                ?.takeIf {
-                    it.isNotBlank()
-                }
+        val mediaId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
 
-        Log.e(
-            "MusicService",
-            "Playback error: " +
-                    error.message +
-                    " code=" +
-                    error.errorCode,
-            error
-        )
+        Log.e("MusicService", "Playback error: ${error.message} code=${error.errorCode}", error)
 
-        if (
-            isLikelyStreamHttpError(error) &&
-            mediaId != null
-        ) {
-            streamUrlCache.remove(
-                mediaId
-            )
-
-            if (
-                streamRefreshInProgress
-                    .add(mediaId)
-            ) {
-                try {
-                    player.prepare()
-
-                    player.playWhenReady =
-                        true
-                } finally {
-                    streamRefreshInProgress
-                        .remove(mediaId)
-                }
-
-                return
+        if (mediaId != null) {
+            val expiredLink = isLikelyStreamHttpError(error)
+            val noStream = error.errorCode == ERROR_CODE_NO_STREAM
+            if (expiredLink || noStream || isNetworkError(error)) {
+                // The stream URL may have expired (typical after the app sat in the background).
+                streamUrlCache.remove(mediaId)
+                if (scheduleRetry(mediaId, immediate = expiredLink)) return
             }
         }
 
         if (
-            error.errorCode ==
-            ERROR_CODE_NO_STREAM &&
-            mediaId != null
-        ) {
-            streamUrlCache.remove(
-                mediaId
-            )
-
-            if (
-                streamRefreshInProgress
-                    .add(mediaId)
-            ) {
-                try {
-                    player.prepare()
-
-                    player.playWhenReady =
-                        true
-                } finally {
-                    streamRefreshInProgress
-                        .remove(mediaId)
-                }
-
-                return
-            }
-        }
-
-        if (
-            dataStore.get(
-                AutoSkipNextOnErrorKey,
-                false
-            ) &&
+            dataStore.get(AutoSkipNextOnErrorKey, false) &&
             isInternetAvailable(this) &&
             player.hasNextMediaItem()
         ) {
             player.seekToNext()
-
             player.prepare()
-
-            player.playWhenReady =
-                true
+            player.playWhenReady = true
         }
+    }
+
+    private fun isNetworkError(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+        PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+        PlaybackException.ERROR_CODE_TIMEOUT -> true
+        else -> false
+    }
+
+    /**
+     * Re-prepares the current song with a growing delay instead of giving up after one try
+     * (or hammering the network in a tight loop, as the old NO_STREAM branch could).
+     * Returns false once the attempts for this song are used up.
+     */
+    private fun scheduleRetry(mediaId: String, immediate: Boolean): Boolean {
+        if (retryMediaId != mediaId) {
+            retryMediaId = mediaId
+            retryCount = 0
+        }
+        if (retryCount >= MAX_PLAYBACK_RETRIES) return false
+        val attempt = retryCount++
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            if (!(immediate && attempt == 0)) {
+                delay((1_500L shl attempt.coerceAtMost(4)).coerceAtMost(15_000L))
+            }
+            if (player.currentMediaItem?.mediaId != mediaId) return@launch
+            player.prepare()
+        }
+        return true
+    }
+
+    /** When connectivity comes back, resume a song that stopped because the network dropped. */
+    private fun registerNetworkCallback() {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scope.launch {
+                    if (player.playerError != null && player.playWhenReady) {
+                        retryCount = 0
+                        retryJob?.cancel()
+                        player.prepare()
+                    }
+                }
+            }
+        }
+        networkCallback = callback
+        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
+            .onFailure { networkCallback = null }
     }
 
     private fun isLikelyStreamHttpError(error: PlaybackException): Boolean {
@@ -997,18 +1107,31 @@ class MusicService : MediaLibraryService(),
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
+        retryJob?.cancel()
+        networkCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
+        networkCallback = null
+        widgetUpdater.stop()
         mediaSession.release()
         player.removeListener(this)
         player.removeListener(sleepTimer)
         player.release()
+        scope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        stopSelf()
+        // Swiping the app out of Recents used to call stopSelf() unconditionally, which killed
+        // the music. Keep the foreground service alive while something is playing; only stop
+        // when nothing is playing, or when the user chose "stop music when app is cleared".
+        val playing = player.playWhenReady &&
+            player.playbackState != STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        if (dataStore.get(StopMusicOnTaskClearKey, false) || !playing) {
+            super.onTaskRemoved(rootIntent)
+            stopSelf()
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
@@ -1019,6 +1142,8 @@ class MusicService : MediaLibraryService(),
     }
 
     companion object {
+        private const val MAX_PLAYBACK_RETRIES = 5
+
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"

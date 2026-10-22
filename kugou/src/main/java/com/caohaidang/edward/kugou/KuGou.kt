@@ -208,5 +208,5 @@ object KuGou {
         UnicodeScript.KATAKANA,
     )
 
-    private const val DURATION_TOLERANCE = 6
+    private const val DURATION_TOLERANCE = 4
 }

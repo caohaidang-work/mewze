@@ -7,12 +7,16 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.CornerPathEffect
 import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.SweepGradient
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.TextPaint
@@ -21,126 +25,88 @@ import com.caohaidang.edward.music.models.MediaMetadata
 import com.caohaidang.edward.music.share.ShareCardRenderer.Weight
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
+/**
+ * Wrapped theo phong cách "My Recent Favs": giấy nhăn, chữ pixel, đĩa than,
+ * ảnh bìa xoay nghiêng quanh đĩa và bìa đĩa ghi danh sách bài.
+ */
 internal object NotebookWrappedRenderer {
     private const val W = 1080
     private const val H = 1920
-    private const val LEFT = 196f
-    private const val RIGHT = W - 76f
 
-    private enum class Pattern { RULED, GRID, DOTS }
+    private val INK = 0xFF121212.toInt()
+    private val PAPER = 0xFFF4F3EF.toInt()
+    private val SLEEVE = 0xFFE9E9E7.toInt()
+    private val GRAY = 0xFF6F6F6C.toInt()
 
-    private class Palette(
-        val paper: Int,
-        val line: Int,
-        val margin: Int,
-        val ink: Int,
-        val sub: Int,
-        val accent: Int,
-        val accent2: Int,
-        val accent3: Int,
-        val pattern: Pattern,
-    )
+    // Vị trí các ảnh bìa quanh mép đĩa (độ, hệ tọa độ canvas: 270 = hướng lên)
+    private val slotAngles = floatArrayOf(200f, 232f, 270f, 308f, 340f)
+    private val slotTilts = floatArrayOf(-26f, -13f, 2f, 13f, 22f)
 
-    private val week = Palette(
-        paper = 0xFFFBF7EA.toInt(), line = 0xFFC4DDEE.toInt(), margin = 0xFFF28B8B.toInt(),
-        ink = 0xFF22304A.toInt(), sub = 0xFF5B6B86.toInt(),
-        accent = 0xFF3FC1A5.toInt(), accent2 = 0xFFFFD84D.toInt(), accent3 = 0xFFFF8FB1.toInt(),
-        pattern = Pattern.RULED,
-    )
-    private val month = Palette(
-        paper = 0xFFFDF6F2.toInt(), line = 0xFFE6CCE9.toInt(), margin = 0xFFF28B8B.toInt(),
-        ink = 0xFF2E2250.toInt(), sub = 0xFF6A5C8A.toInt(),
-        accent = 0xFF9B5DE5.toInt(), accent2 = 0xFFFFC857.toInt(), accent3 = 0xFF5BC0EB.toInt(),
-        pattern = Pattern.GRID,
-    )
-    private val year = Palette(
-        paper = 0xFFFFF8E8.toInt(), line = 0xFFE3C79E.toInt(), margin = 0xFFF28B8B.toInt(),
-        ink = 0xFF3B2416.toInt(), sub = 0xFF7D5A44.toInt(),
-        accent = 0xFFFF7A3D.toInt(), accent2 = 0xFFFFD166.toInt(), accent3 = 0xFF06D6A0.toInt(),
-        pattern = Pattern.DOTS,
-    )
-
-    private fun paletteFor(theme: CardTheme) = when (theme.name) {
-        "wrapped_month" -> month
-        "wrapped_year" -> year
-        else -> week
+    private fun slotsFor(n: Int): IntArray = when (n) {
+        1 -> intArrayOf(2)
+        2 -> intArrayOf(1, 3)
+        3 -> intArrayOf(1, 2, 3)
+        4 -> intArrayOf(0, 1, 3, 4)
+        else -> intArrayOf(0, 1, 2, 3, 4)
     }
+
+    private fun labelColor(theme: CardTheme) = when (theme.name) {
+        "wrapped_month" -> 0xFFE3D3F5.toInt()
+        "wrapped_year" -> 0xFFF8D9BF.toInt()
+        else -> 0xFFF2EBD8.toInt()
+    }
+
+    // ───────────────────────── Trang 1: tổng quan ─────────────────────────
 
     fun overview(
         context: Context,
         totalMinutes: Long,
         topSong: MediaMetadata?,
         topSongPlays: Int,
+        songs: List<Pair<MediaMetadata, Int>>,
         texts: WrappedTexts,
         images: WrappedImages,
         theme: CardTheme,
     ): Bitmap {
         ShareCardRenderer.loadFonts(context)
-        val p = paletteFor(theme)
-        val (bitmap, c) = newPage(p)
+        val (bitmap, c) = newPage()
 
-        brandLabel(c, texts.brand, 420f, 168f, 500f, 84f, 46f, 192f, p)
-        text(c, texts.periodLabel, LEFT, 300f, 46f, p.ink, Weight.SemiBold)
-        squiggle(c, LEFT, 328f, LEFT + 520f, 9f, p.accent3, 7f)
+        title(c, "MY RECENT", "Favs", pixelBaseline = 215f, pixelSize = 150f, scriptSize = 190f)
+        dateTag(c, texts.periodLabel, 432f)
+        outlineStar(c, 130f, 130f, 20f)
+        outlineStar(c, 950f, 300f, 17f)
+        outlineStar(c, 170f, 470f, 14f)
 
-        star(c, 900f, 170f, 52f, p.accent2, 12f)
-        sparkle(c, 985f, 258f, 30f, p.accent3)
-        sparkle(c, 830f, 270f, 20f, p.accent)
-        note(c, 960f, 380f, 54f, p.accent, -10f)
+        // Chỉ giữ lại tổng thời gian nghe, trong khung chọn kiểu trình chỉnh sửa
+        selectionBox(
+            c, RectF(340f, 505f, 740f, 655f),
+            ShareCardRenderer.formatNumber(totalMinutes), texts.minutesUnit
+        )
 
-        val minutesText = ShareCardRenderer.formatNumber(totalMinutes)
-        val big = if (totalMinutes >= 10_000) 240f else 300f
-        val bigPaint = ShareCardRenderer.paint(p.ink, big, Weight.Bold)
-        val bigW = bigPaint.measureText(minutesText)
-        c.drawText(minutesText, LEFT, 660f, bigPaint)
-        scribbleCircle(c, RectF(LEFT - 34f, 660f - big * 0.92f, LEFT + bigW + 34f, 696f), p.accent3, 9f)
-        highlight(c, texts.minutesUnit, LEFT, 786f, 64f, p.ink, p.accent2, Weight.Bold, rotate = -1.5f)
-
-        val stats = listOfNotNull(texts.songsCount, texts.busiestDay, texts.topArtistLine)
-        val notes = intArrayOf(p.accent2, p.accent3, p.accent)
-        val rots = floatArrayOf(-1.6f, 1.2f, -0.9f)
-        var y = 872f
-        stats.forEachIndexed { i, line ->
-            val rect = RectF(LEFT, y, RIGHT - 24f, y + 116f)
-            stickyNote(c, rect, tint(notes[i % 3], 0.55f), rots[i % 3], if (i == 1) p.accent else p.accent3)
-            val tp = ShareCardRenderer.paint(p.ink, 42f, Weight.SemiBold)
-            c.save()
-            c.rotate(rots[i % 3], rect.centerX(), rect.centerY())
-            c.drawText(ShareCardRenderer.ellipsize(line, tp, rect.width() - 150f), rect.left + 34f, rect.centerY() + 15f, tp)
-            when (i % 3) {
-                0 -> heart(c, rect.right - 54f, rect.centerY(), 22f, p.accent3)
-                1 -> star(c, rect.right - 54f, rect.centerY(), 24f, p.accent2, 0f)
-                else -> note(c, rect.right - 54f, rect.centerY() + 4f, 34f, p.ink, 0f)
-            }
-            c.restore()
-            y += 140f
+        val list = songs.take(5)
+        val cx = 540f
+        val cy = 1230f
+        val radius = 470f
+        vinyl(c, cx, cy, radius, labelColor(theme))
+        arcPrints(c, cx, cy, list.size) { i, x, y, tilt ->
+            poster(c, images.songCovers.getOrNull(i), x, y, 215f, tilt)
         }
 
-        if (topSong != null) {
-            val top = 1336f
-            stamp(c, LEFT + 150f, top - 8f, texts.topSongLabel.uppercase(), p.accent3, p.ink)
-            val size = 300f
-            polaroid(c, images.topCover, LEFT + 20f, top + 36f, size, -4f, p)
-
-            val tx = LEFT + 20f + size + 74f
-            val tw = RIGHT - tx
-            val titleLayout = ShareCardRenderer.buildLayout(
-                topSong.title, ShareCardRenderer.paint(p.ink, 54f, Weight.Bold), tw.toInt(),
-                Layout.Alignment.ALIGN_NORMAL, maxLines = 3
-            )
-            c.save(); c.translate(tx, top + 54f); titleLayout.draw(c); c.restore()
-            val artistPaint = ShareCardRenderer.paint(p.sub, 40f, Weight.Regular)
-            val ay = top + 54f + titleLayout.height + 52f
-            c.drawText(
-                ShareCardRenderer.ellipsize(topSong.artists.joinToString { it.name }, artistPaint, tw),
-                tx, ay, artistPaint
-            )
-            highlight(c, texts.playsText(topSongPlays), tx, ay + 78f, 40f, p.ink, p.accent2, Weight.Bold, rotate = -1f)
-        }
-
+        val top = 1410f
+        sleeve(c, RectF(80f, top, 1000f, H + 60f))
+        trackList(
+            c,
+            titles = list.map { it.first.title },
+            subs = list.map { null },
+            top = top + 78f,
+        )
+        wordmark(c, context, 1856f)
         return bitmap
     }
+
+    // ───────────────────────── Trang 2: top bài hát ─────────────────────────
 
     fun songs(
         context: Context,
@@ -150,39 +116,47 @@ internal object NotebookWrappedRenderer {
         theme: CardTheme,
     ): Bitmap {
         ShareCardRenderer.loadFonts(context)
-        val p = paletteFor(theme)
-        val (bitmap, c) = newPage(p)
-        pageHeader(c, texts, p)
+        val (bitmap, c) = newPage()
 
-        highlight(c, texts.topSongsTitle, LEFT, 372f, 96f, p.ink, p.accent2, Weight.Bold, rotate = -1.2f)
-        star(c, 930f, 330f, 46f, p.accent3, 14f)
-        sparkle(c, 1000f, 400f, 24f, p.accent)
+        titleFrom(c, texts.topSongsTitle, pixelBaseline = 200f, pixelSize = 130f, scriptSize = 150f)
+        dateTag(c, texts.periodLabel, 405f)
+        outlineStar(c, 900f, 150f, 18f)
+        outlineStar(c, 190f, 440f, 15f)
 
-        songs.take(5).forEachIndexed { i, (song, plays) ->
-            val top = 470f + i * 236f
+        vinyl(c, 540f, 860f, 360f, labelColor(theme))
 
-            rankBadge(c, 252f, top + 100f, i + 1, p)
+        val sleeveTop = 660f
+        sleeve(c, RectF(80f, sleeveTop, 1000f, 1830f), deg = -1.2f)
 
-            val coverRect = RectF(340f, top + 6f, 340f + 188f, top + 6f + 188f)
-            drawCrop(c, images.songCovers.getOrNull(i), coverRect, 26f, tint(p.accent, 0.4f), p.ink)
-            c.drawRoundRect(coverRect, 26f, 26f, strokePaint(Color.WHITE, 7f))
-            tape(c, coverRect.left + 18f, coverRect.top + 4f, 84f, 34f, -35f, if (i % 2 == 0) p.accent3 else p.accent2)
+        rotated(c, -1.2f, 540f, 1245f) {
+            songs.take(5).forEachIndexed { i, (song, plays) ->
+                val rowTop = sleeveTop + 50f + i * 212f
+                pixelText(c, "%02d".format(i + 1), 140f, rowTop + 100f, 54f, INK)
 
-            val tx = coverRect.right + 40f
-            val tw = RIGHT - tx
-            val titlePaint = ShareCardRenderer.paint(p.ink, 46f, Weight.Bold)
-            c.drawText(ShareCardRenderer.ellipsize(song.title, titlePaint, tw), tx, top + 72f, titlePaint)
-            val artistPaint = ShareCardRenderer.paint(p.sub, 36f, Weight.Regular)
-            c.drawText(ShareCardRenderer.ellipsize(song.artists.joinToString { it.name }, artistPaint, tw), tx, top + 124f, artistPaint)
-            highlight(c, texts.playsText(plays), tx, top + 178f, 36f, p.ink, if (i == 0) p.accent2 else tint(p.accent, 0.55f), Weight.Bold, rotate = -1f)
+                poster(
+                    c, images.songCovers.getOrNull(i),
+                    340f, rowTop + 78f, 148f, if (i % 2 == 0) -4f else 3.5f
+                )
 
-            if (i < 4) dashedLine(c, LEFT, top + 218f, RIGHT, p.line.darker(0.82f))
+                val tx = 462f
+                val tw = 940f - tx
+                val titlePaint = ShareCardRenderer.paint(INK, 40f, Weight.Bold)
+                c.drawText(ShareCardRenderer.ellipsize(song.title, titlePaint, tw), tx, rowTop + 54f, titlePaint)
+                val artistPaint = ShareCardRenderer.paint(GRAY, 31f, Weight.Regular)
+                c.drawText(
+                    ShareCardRenderer.ellipsize(song.artists.joinToString { it.name }, artistPaint, tw),
+                    tx, rowTop + 100f, artistPaint
+                )
+                pixelText(c, texts.playsText(plays), tx, rowTop + 148f, 32f, INK)
+
+                if (i < songs.take(5).size - 1) dashedLine(c, 130f, rowTop + 190f, 950f, 0xFFB9B9B5.toInt())
+            }
         }
-
-        heart(c, 1000f, 1650f, 26f, p.accent3)
-        note(c, 120f, 1700f, 44f, p.accent, 8f)
+        wordmark(c, context, 1770f)
         return bitmap
     }
+
+    // ───────────────────────── Trang 3: top nghệ sĩ ─────────────────────────
 
     fun artists(
         context: Context,
@@ -192,112 +166,373 @@ internal object NotebookWrappedRenderer {
         theme: CardTheme,
     ): Bitmap {
         ShareCardRenderer.loadFonts(context)
-        val p = paletteFor(theme)
-        val (bitmap, c) = newPage(p)
-        pageHeader(c, texts, p)
+        val (bitmap, c) = newPage()
 
-        highlight(c, texts.topArtistsTitle, LEFT, 372f, 96f, p.ink, p.accent3, Weight.Bold, rotate = 1.2f)
-        heart(c, 940f, 330f, 36f, p.accent)
-        sparkle(c, 1000f, 410f, 26f, p.accent2)
+        titleFrom(c, texts.topArtistsTitle, pixelBaseline = 215f, pixelSize = 150f, scriptSize = 190f)
+        dateTag(c, texts.periodLabel, 440f)
+        outlineStar(c, 292f, 70f, 20f)
+        outlineStar(c, 900f, 540f, 17f)
+        outlineStar(c, 200f, 560f, 15f)
 
-        artists.take(5).forEachIndexed { i, (name, playTime) ->
-            val top = 470f + i * 236f
-            rankBadge(c, 252f, top + 100f, i + 1, p)
-
-            val cx = 340f + 94f
-            val cy = top + 100f
-            val r = 92f
-            drawCropCircle(c, images.artistAvatars.getOrNull(i), cx, cy, r, tint(p.accent, 0.4f), p.ink)
-            c.drawCircle(cx, cy, r, strokePaint(Color.WHITE, 8f))
-            c.drawCircle(cx, cy, r + 14f, strokePaint(if (i % 2 == 0) p.accent3 else p.accent, 4f).apply {
-                pathEffect = DashPathEffect(floatArrayOf(14f, 12f), 0f)
-            })
-
-            val tx = cx + r + 56f
-            val tw = RIGHT - tx
-            val namePaint = ShareCardRenderer.paint(p.ink, 50f, Weight.Bold)
-            c.drawText(ShareCardRenderer.ellipsize(name, namePaint, tw), tx, top + 88f, namePaint)
-            highlight(c, texts.minutesText(playTime / 60_000), tx, top + 148f, 38f, p.ink, tint(p.accent2, 0.7f), Weight.SemiBold, rotate = -1f)
-
-            val stars = (5 - i).coerceAtLeast(1)
-            repeat(5) { s ->
-                star(c, tx + 18f + s * 46f, top + 186f, 17f, if (s < stars) p.accent2 else p.line.darker(0.92f), 0f)
-            }
-            if (i < 4) dashedLine(c, LEFT, top + 218f, RIGHT, p.line.darker(0.82f))
+        val list = artists.take(5)
+        val cx = 540f
+        val cy = 1230f
+        vinyl(c, cx, cy, 470f, labelColor(theme))
+        arcPrints(c, cx, cy, list.size) { i, x, y, _ ->
+            avatar(c, images.artistAvatars.getOrNull(i), x, y, 108f)
         }
 
-        sparkle(c, 140f, 1640f, 28f, p.accent3)
-        star(c, 990f, 1700f, 30f, p.accent2, -10f)
+        val top = 1410f
+        sleeve(c, RectF(80f, top, 1000f, H + 60f))
+        trackList(
+            c,
+            titles = list.map { it.first },
+            subs = list.map { texts.minutesText(it.second / 60_000) },
+            top = top + 78f,
+        )
+        wordmark(c, context, 1856f)
         return bitmap
     }
 
-    private fun brandLabel(
-        c: Canvas, brand: String, cx: Float, cy: Float, w: Float, h: Float,
-        size: Float, baseline: Float, p: Palette,
+    // ───────────────────────── Thành phần chung ─────────────────────────
+
+    @Volatile
+    private var wordmarkBmp: Bitmap? = null
+
+    /** Logo wordmark căn giữa theo chiều ngang, cao ~54px, tâm tại cy. */
+    private fun wordmark(c: Canvas, context: Context, cy: Float) {
+        val img = wordmarkBmp ?: runCatching {
+            android.graphics.BitmapFactory.decodeResource(
+                context.applicationContext.resources,
+                com.caohaidang.edward.music.R.drawable.logo_wordmark
+            )
+        }.getOrNull()?.also { wordmarkBmp = it } ?: return
+        val h = 56f
+        val w = img.width * (h / img.height)
+        val dst = RectF(W / 2f - w / 2f, cy - h / 2f, W / 2f + w / 2f, cy + h / 2f)
+        c.drawBitmap(img, null, dst, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+    }
+
+    /** Tách "Top songs" thành chữ pixel "TOP" và chữ viết tay "Songs". */
+    private fun titleFrom(c: Canvas, text: String, pixelBaseline: Float, pixelSize: Float, scriptSize: Float) {
+        val parts = text.trim().split(" ", limit = 2)
+        val script = parts.getOrNull(1).orEmpty().replaceFirstChar { it.uppercase() }
+        title(c, parts[0].uppercase(), script, pixelBaseline, pixelSize, scriptSize)
+    }
+
+    /** Tiêu đề: dòng pixel đậm có bóng lệch, bên dưới là chữ viết tay nghiêng ôm sát. */
+    private fun title(
+        c: Canvas, pix: String, script: String,
+        pixelBaseline: Float, pixelSize: Float, scriptSize: Float,
     ) {
-        tape(c, cx, cy, w, h, -3f, p.accent)
-        val paint = ShareCardRenderer.paint(p.ink, size, Weight.Bold)
-        val logoR = size * 0.62f
-        val gap = 14f
-        val total = logoR * 2f + gap + paint.measureText(brand)
-        val left = cx - total / 2f
-        rotated(c, -3f, cx, baseline) {
-            ShareCardRenderer.drawLogoMark(c, left + logoR, baseline - size * 0.34f, logoR, p.ink, p.accent)
-            c.drawText(brand, left + logoR * 2f + gap, baseline, paint)
+        var size = pixelSize
+        while (pixelWidth(pix, size) > 820f && size > 60f) size -= 6f
+        pixelText(c, pix, W / 2f + 7f, pixelBaseline + 7f, size, Color.argb(46, 0, 0, 0), Paint.Align.CENTER)
+        pixelText(c, pix, W / 2f, pixelBaseline, size, INK, Paint.Align.CENTER)
+
+        if (script.isNotEmpty()) {
+            scriptText(c, script, W / 2f + 30f, pixelBaseline + scriptSize * 0.66f, scriptSize, -3f)
         }
     }
 
-    private fun pageHeader(c: Canvas, texts: WrappedTexts, p: Palette) {
-        brandLabel(c, texts.brand, 400f, 152f, 480f, 80f, 44f, 175f, p)
-        text(c, texts.periodLabel, LEFT, 268f, 42f, p.sub, Weight.SemiBold)
-        star(c, 900f, 150f, 40f, p.accent2, 10f)
+    /** Nhãn khoảng thời gian dạng tem bo tròn. */
+    private fun dateTag(c: Canvas, s: String, cy: Float) {
+        if (s.isBlank()) return
+        val (t, size) = fitPixel(s, 30f, 820f, 22f)
+        val w = pixelWidth(t, size) + 64f
+        val rect = RectF(W / 2f - w / 2f, cy - 30f, W / 2f + w / 2f, cy + 30f)
+        rotated(c, -1.5f, W / 2f, cy) {
+            softShadow(c, rect, 30f, 70)
+            c.drawRoundRect(rect, 30f, 30f, fill(0xFFFAFAF8.toInt()))
+            c.drawRoundRect(rect, 30f, 30f, strokePaint(INK, 2.5f))
+            pixelText(c, t, W / 2f, cy + size * 0.36f, size, INK, Paint.Align.CENTER)
+        }
     }
 
-    private fun newPage(p: Palette): Pair<Bitmap, Canvas> {
-        val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bitmap)
-        c.drawColor(p.paper)
+    private fun scriptText(c: Canvas, s: String, cx: Float, baseline: Float, size: Float, deg: Float) {
+        val fill = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
+            textSize = size
+            color = INK
+            textAlign = Paint.Align.CENTER
+            textSkewX = -0.14f
+        }
+        while (fill.measureText(s) > 820f && fill.textSize > 60f) fill.textSize -= 6f
+        val outline = TextPaint(fill).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 18f
+            strokeJoin = Paint.Join.ROUND
+            color = PAPER
+        }
+        rotated(c, deg, cx, baseline) {
+            c.drawText(s, cx, baseline, outline)
+            c.drawText(s, cx, baseline, fill)
+        }
+    }
 
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.line; strokeWidth = 3f }
-        when (p.pattern) {
-            Pattern.RULED -> {
-                var y = 120f + 40f
-                while (y < H) { c.drawLine(0f, y, W.toFloat(), y, linePaint); y += 68f }
-            }
-            Pattern.GRID -> {
-                var y = 120f
-                while (y < H) { c.drawLine(0f, y, W.toFloat(), y, linePaint); y += 60f }
-                var x = 36f
-                while (x < W) { c.drawLine(x, 0f, x, H.toFloat(), linePaint); x += 60f }
-            }
-            Pattern.DOTS -> {
-                var y = 120f
-                while (y < H) {
-                    var x = 36f
-                    while (x < W) { c.drawCircle(x, y, 4.5f, linePaint); x += 56f }
-                    y += 56f
-                }
+    /** Vẽ chữ kiểu pixel: render chữ nhỏ không khử răng cưa rồi phóng to không làm mượt. */
+    private fun pixelText(
+        c: Canvas, s: String, x: Float, baseline: Float, size: Float, color: Int,
+        align: Paint.Align = Paint.Align.LEFT, rotate: Float = 0f,
+    ) {
+        if (s.isEmpty()) return
+        val small = 20f
+        val scale = size / small
+        val tp = ShareCardRenderer.paint(Color.WHITE, small, Weight.Bold, letterSpacing = 0.06f).apply {
+            isAntiAlias = false
+        }
+        val fm = tp.fontMetrics
+        val w = Math.ceil(tp.measureText(s).toDouble()).toInt() + 4
+        val h = Math.ceil((fm.descent - fm.ascent).toDouble()).toInt() + 4
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).drawText(s, 2f, 2f - fm.ascent, tp)
+
+        val paint = Paint().apply {
+            isFilterBitmap = false
+            isAntiAlias = false
+            colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+        }
+        val dw = w * scale
+        val dh = h * scale
+        val left = when (align) {
+            Paint.Align.LEFT -> x
+            Paint.Align.CENTER -> x - dw / 2f
+            Paint.Align.RIGHT -> x - dw
+        }
+        val top = baseline - (2f - fm.ascent) * scale
+        rotated(c, rotate, x, baseline) {
+            c.drawBitmap(bmp, null, RectF(left, top, left + dw, top + dh), paint)
+        }
+        bmp.recycle()
+    }
+
+    private fun pixelWidth(s: String, size: Float): Float {
+        val tp = ShareCardRenderer.paint(Color.WHITE, 20f, Weight.Bold, letterSpacing = 0.06f)
+        return (tp.measureText(s) + 4f) * (size / 20f)
+    }
+
+    /** Rút gọn chữ pixel cho vừa chiều rộng: thu nhỏ dần rồi mới cắt bớt. */
+    private fun fitPixel(s: String, size: Float, maxW: Float, minSize: Float = 30f): Pair<String, Float> {
+        var sz = size
+        while (pixelWidth(s, sz) > maxW && sz > minSize) sz -= 2f
+        if (pixelWidth(s, sz) <= maxW) return s to sz
+        var t = s
+        while (t.length > 1 && pixelWidth("$t…", sz) > maxW) t = t.dropLast(1)
+        return "${t.trimEnd()}…" to sz
+    }
+
+    private fun trackList(c: Canvas, titles: List<String>, subs: List<String?>, top: Float) {
+        titles.forEachIndexed { i, title ->
+            val baseline = top + i * 76f
+            pixelText(c, "%02d".format(i + 1), 150f, baseline, 44f, INK)
+            val sub = subs.getOrNull(i)
+            val maxW = if (sub != null) 480f else 640f
+            val (t, sz) = fitPixel(title.lowercase(), 44f, maxW)
+            pixelText(c, t, 930f, baseline, sz, INK, Paint.Align.RIGHT)
+            if (sub != null) {
+                val sp = ShareCardRenderer.paint(GRAY, 28f, Weight.Medium)
+                c.drawText(ShareCardRenderer.ellipsize(sub, sp, 220f), 246f, baseline - 2f, sp)
             }
         }
+    }
 
-        val margin = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.margin; strokeWidth = 4f }
-        c.drawLine(152f, 0f, 152f, H.toFloat(), margin)
-        c.drawLine(164f, 0f, 164f, H.toFloat(), Paint(margin).apply { alpha = 120; strokeWidth = 2.5f })
+    // ───────────────────────── Đĩa than ─────────────────────────
 
-        listOf(340f, 960f, 1580f).forEach { cy ->
-            val hole = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ColorUtils.blendARGB(p.paper, Color.BLACK, 0.22f) }
-            c.drawCircle(68f, cy, 30f, hole)
-            c.drawCircle(68f, cy, 30f, strokePaint(ColorUtils.blendARGB(p.paper, Color.BLACK, 0.08f), 3f))
-            c.drawCircle(60f, cy - 7f, 20f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ColorUtils.blendARGB(p.paper, Color.BLACK, 0.34f) })
+    private fun vinyl(c: Canvas, cx: Float, cy: Float, r: Float, label: Int) {
+        // bóng đổ
+        c.drawCircle(cx + 8f, cy + 16f, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(90, 20, 20, 20)
+            maskFilter = BlurMaskFilter(26f, BlurMaskFilter.Blur.NORMAL)
+        })
+        c.drawCircle(cx, cy, r, fill(0xFF0E0E0E.toInt()))
+
+        // rãnh đĩa
+        var g = r - 12f
+        var k = 0
+        while (g > r * 0.36f) {
+            val col = if (k % 3 == 0) Color.argb(34, 255, 255, 255) else Color.argb(22, 0, 0, 0)
+            c.drawCircle(cx, cy, g, strokePaint(col, 2f))
+            g -= 7f
+            k++
         }
+        // vòng phân cách tối hơn giống đĩa thật
+        c.drawCircle(cx, cy, r * 0.64f, strokePaint(0xFF2B2B2B.toInt(), 5f))
+        c.drawCircle(cx, cy, r * 0.43f, strokePaint(0xFF242424.toInt(), 4f))
 
-        val vignette = Paint().apply {
-            shader = RadialGradient(
-                W / 2f, H / 2f, H * 0.72f,
-                Color.TRANSPARENT, ColorUtils.setAlphaComponent(0xFF8A6D3B.toInt(), 46), Shader.TileMode.CLAMP
+        // ánh phản quang
+        val sheen = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = SweepGradient(
+                cx, cy,
+                intArrayOf(
+                    Color.TRANSPARENT, Color.argb(46, 255, 255, 255), Color.TRANSPARENT,
+                    Color.TRANSPARENT, Color.argb(36, 255, 255, 255), Color.TRANSPARENT, Color.TRANSPARENT
+                ),
+                floatArrayOf(0f, 0.09f, 0.2f, 0.5f, 0.59f, 0.7f, 1f)
             )
         }
-        c.drawRect(0f, 0f, W.toFloat(), H.toFloat(), vignette)
+        c.drawCircle(cx, cy, r - 6f, sheen)
+
+        // nhãn giữa
+        val lr = r * 0.30f
+        c.drawCircle(cx, cy, lr, fill(label))
+        c.drawCircle(cx, cy, lr, strokePaint(ColorUtils.blendARGB(label, Color.BLACK, 0.18f), 3f))
+        c.drawCircle(cx, cy, lr * 0.62f, strokePaint(ColorUtils.blendARGB(label, Color.BLACK, 0.10f), 2f))
+        c.drawCircle(cx, cy, 15f, fill(0xFF0E0E0E.toInt()))
+        c.drawCircle(cx, cy, 9f, fill(PAPER))
+    }
+
+    /** Đặt các ảnh quanh cung phía trên đĩa kèm số thứ hạng nằm trong đĩa. */
+    private fun arcPrints(
+        c: Canvas, cx: Float, cy: Float, n: Int,
+        draw: (index: Int, x: Float, y: Float, tilt: Float) -> Unit,
+    ) {
+        val slots = slotsFor(n)
+        slots.forEachIndexed { i, slot ->
+            val a = Math.toRadians(slotAngles[slot].toDouble())
+            val px = cx + (420f * cos(a)).toFloat()
+            val py = cy + (420f * sin(a)).toFloat()
+            draw(i, px, py, slotTilts[slot])
+
+            val nx = cx + (292f * cos(a)).toFloat()
+            val ny = cy + (292f * sin(a)).toFloat()
+            pixelText(c, (i + 1).toString(), nx, ny + 20f, 50f, Color.WHITE, Paint.Align.CENTER)
+        }
+    }
+
+    // ───────────────────────── Bìa đĩa, ảnh, khung ─────────────────────────
+
+    private fun sleeve(c: Canvas, rect: RectF, deg: Float = 0f) {
+        rotated(c, deg, rect.centerX(), rect.centerY()) {
+            c.drawRect(RectF(rect).apply { offset(0f, -6f) }, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(80, 20, 20, 20)
+                maskFilter = BlurMaskFilter(22f, BlurMaskFilter.Blur.NORMAL)
+            })
+            c.drawRect(rect, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(
+                    0f, rect.top, 0f, minOf(rect.bottom, H.toFloat()),
+                    0xFFEEEEEC.toInt(), 0xFFDCDCD9.toInt(), Shader.TileMode.CLAMP
+                )
+            })
+            c.drawRect(rect, strokePaint(0xFFCDCDC9.toInt(), 2.5f))
+
+            // vài nếp nhăn mờ trên bìa
+            val rnd = Random(rect.top.toInt())
+            repeat(10) {
+                val x1 = rect.left + rnd.nextFloat() * rect.width()
+                val y1 = rect.top + rnd.nextFloat() * 500f
+                val x2 = x1 + (rnd.nextFloat() - 0.5f) * 320f
+                val y2 = y1 + 80f + rnd.nextFloat() * 220f
+                c.drawLine(x1, y1, x2, y2, strokePaint(Color.argb(16, 0, 0, 0), 2f))
+                c.drawLine(x1 + 3f, y1, x2 + 3f, y2, strokePaint(Color.argb(60, 255, 255, 255), 2f))
+            }
+        }
+    }
+
+    private fun poster(c: Canvas, bmp: Bitmap?, cx: Float, cy: Float, size: Float, deg: Float) {
+        val pad = 9f
+        val frame = RectF(cx - size / 2 - pad, cy - size / 2 - pad, cx + size / 2 + pad, cy + size / 2 + pad)
+        rotated(c, deg, cx, cy) {
+            softShadow(c, frame, 4f, 110)
+            c.drawRect(frame, fill(Color.WHITE))
+            val img = RectF(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2)
+            drawCrop(c, bmp, img, 0f, 0xFFBDBDBA.toInt(), INK)
+        }
+    }
+
+    private fun avatar(c: Canvas, bmp: Bitmap?, cx: Float, cy: Float, r: Float) {
+        c.drawCircle(cx + 5f, cy + 10f, r + 9f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(110, 20, 20, 20)
+            maskFilter = BlurMaskFilter(18f, BlurMaskFilter.Blur.NORMAL)
+        })
+        c.drawCircle(cx, cy, r + 9f, fill(Color.WHITE))
+        drawCropCircle(c, bmp, cx, cy, r, 0xFFBDBDBA.toInt(), INK)
+    }
+
+    /** Khung chọn giống trình chỉnh sửa (có 8 điểm điều khiển và con trỏ chuột). */
+    private fun selectionBox(c: Canvas, r: RectF, big: String, small: String) {
+        c.drawRect(r, strokePaint(0xFF8A8A87.toInt(), 2.5f))
+        val hs = 9f
+        val xs = floatArrayOf(r.left, r.centerX(), r.right)
+        val ys = floatArrayOf(r.top, r.centerY(), r.bottom)
+        for (xi in 0..2) for (yi in 0..2) {
+            if (xi == 1 && yi == 1) continue
+            val hr = RectF(xs[xi] - hs, ys[yi] - hs, xs[xi] + hs, ys[yi] + hs)
+            c.drawRect(hr, fill(Color.WHITE))
+            c.drawRect(hr, strokePaint(0xFF8A8A87.toInt(), 2.5f))
+        }
+        val (bt, bs) = fitPixel(big, 100f, r.width() - 40f, 40f)
+        pixelText(c, bt, r.centerX(), r.centerY() + 12f, bs, INK, Paint.Align.CENTER)
+        val sp = ShareCardRenderer.paint(GRAY, 28f, Weight.Medium, align = Paint.Align.CENTER)
+        c.drawText(ShareCardRenderer.ellipsize(small, sp, r.width() - 24f), r.centerX(), r.centerY() + 66f, sp)
+
+        // con trỏ chuột
+        val ox = r.right + 6f
+        val oy = r.bottom + 10f
+        val arrow = Path().apply {
+            moveTo(ox, oy)
+            lineTo(ox, oy + 34f)
+            lineTo(ox + 9f, oy + 26f)
+            lineTo(ox + 16f, oy + 42f)
+            lineTo(ox + 23f, oy + 39f)
+            lineTo(ox + 16f, oy + 24f)
+            lineTo(ox + 28f, oy + 24f)
+            close()
+        }
+        c.drawPath(arrow, fill(INK))
+        c.drawPath(arrow, strokePaint(Color.WHITE, 3f))
+    }
+
+    // ───────────────────────── Giấy nhăn & họa tiết ─────────────────────────
+
+    private fun newPage(): Pair<Bitmap, Canvas> {
+        val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bitmap)
+        c.drawColor(PAPER)
+        val rnd = Random(20261015)
+
+        // vệt sáng/tối loang nhẹ như giấy bị vò
+        repeat(16) { i ->
+            val x = rnd.nextFloat() * W
+            val y = rnd.nextFloat() * H
+            val r = 260f + rnd.nextFloat() * 420f
+            val light = i % 2 == 0
+            val center = if (light) Color.argb(120, 255, 255, 255) else Color.argb(34, 120, 116, 104)
+            c.drawCircle(x, y, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = RadialGradient(x, y, r, center, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            })
+        }
+
+        // nếp gấp: một đường tối kèm đường sáng sát bên cạnh
+        repeat(80) {
+            val x1 = rnd.nextFloat() * W
+            val y1 = rnd.nextFloat() * H
+            val len = 120f + rnd.nextFloat() * 520f
+            val ang = rnd.nextFloat() * Math.PI.toFloat()
+            val mx = x1 + cos(ang) * len * 0.5f + (rnd.nextFloat() - 0.5f) * 60f
+            val my = y1 + sin(ang) * len * 0.5f + (rnd.nextFloat() - 0.5f) * 60f
+            val x2 = x1 + cos(ang) * len
+            val y2 = y1 + sin(ang) * len
+            val path = Path().apply { moveTo(x1, y1); quadTo(mx, my, x2, y2) }
+            c.drawPath(path, strokePaint(Color.argb(10 + rnd.nextInt(16), 70, 66, 56), 2f))
+            c.save(); c.translate(2.5f, 2f)
+            c.drawPath(path, strokePaint(Color.argb(80, 255, 255, 255), 2f))
+            c.restore()
+        }
+
+        // hạt giấy li ti
+        val speck = Paint(Paint.ANTI_ALIAS_FLAG)
+        repeat(1400) {
+            speck.color = Color.argb(6 + rnd.nextInt(12), 60, 56, 48)
+            c.drawCircle(rnd.nextFloat() * W, rnd.nextFloat() * H, 0.8f + rnd.nextFloat() * 1.6f, speck)
+        }
+
+        // hơi tối dần ra mép
+        c.drawRect(0f, 0f, W.toFloat(), H.toFloat(), Paint().apply {
+            shader = RadialGradient(
+                W / 2f, H / 2f, H * 0.74f,
+                Color.TRANSPARENT, Color.argb(34, 90, 84, 66), Shader.TileMode.CLAMP
+            )
+        })
         return bitmap to c
     }
 
@@ -311,71 +546,22 @@ internal object NotebookWrappedRenderer {
         strokeJoin = Paint.Join.ROUND
     }
 
-    private fun tint(color: Int, amount: Float) = ColorUtils.blendARGB(color, Color.WHITE, 1f - amount)
-
-    private fun Int.darker(factor: Float): Int = Color.rgb(
-        (Color.red(this) * factor).toInt(), (Color.green(this) * factor).toInt(), (Color.blue(this) * factor).toInt()
-    )
-
     private inline fun rotated(c: Canvas, deg: Float, px: Float, py: Float, block: () -> Unit) {
         c.save(); c.rotate(deg, px, py); block(); c.restore()
     }
 
-    private fun text(
-        c: Canvas, s: String, x: Float, baseline: Float, size: Float, color: Int, weight: Weight,
-        rotate: Float = 0f, align: Paint.Align = Paint.Align.LEFT,
-    ) {
-        val paint = ShareCardRenderer.paint(color, size, weight, align = align)
-        rotated(c, rotate, x, baseline) { c.drawText(s, x, baseline, paint) }
-    }
-
-    private fun highlight(
-        c: Canvas, s: String, x: Float, baseline: Float, size: Float, ink: Int, marker: Int, weight: Weight,
-        rotate: Float = 0f,
-    ) {
-        val paint = ShareCardRenderer.paint(ink, size, weight)
-        val w = paint.measureText(s)
-        rotated(c, rotate, x, baseline) {
-            val top = baseline - size * 0.82f
-            val bottom = baseline + size * 0.26f
-            val path = Path().apply {
-                moveTo(x - 14f, top + 6f)
-                lineTo(x + w + 16f, top - 2f)
-                lineTo(x + w + 8f, bottom)
-                lineTo(x - 10f, bottom + 5f)
-                close()
-            }
-            c.drawPath(path, fill(ColorUtils.setAlphaComponent(marker, 190)).apply { pathEffect = CornerPathEffect(10f) })
-            c.drawText(s, x, baseline, paint)
-        }
-    }
-
-    private fun star(c: Canvas, cx: Float, cy: Float, r: Float, color: Int, deg: Float) {
+    private fun outlineStar(c: Canvas, cx: Float, cy: Float, r: Float) {
         val path = Path()
         for (i in 0 until 10) {
-            val rad = if (i % 2 == 0) r else r * 0.46f
+            val rad = if (i % 2 == 0) r else r * 0.44f
             val a = Math.toRadians((-90 + i * 36).toDouble())
             val x = cx + (rad * cos(a)).toFloat()
             val y = cy + (rad * sin(a)).toFloat()
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         path.close()
-        rotated(c, deg, cx, cy) {
-            c.drawPath(path, fill(color).apply { pathEffect = CornerPathEffect(r * 0.14f) })
-            c.drawPath(path, strokePaint(ColorUtils.blendARGB(color, Color.BLACK, 0.18f), 2.5f).apply { pathEffect = CornerPathEffect(r * 0.14f) })
-        }
-    }
-
-    private fun sparkle(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
-        val path = Path().apply {
-            moveTo(cx, cy - r)
-            quadTo(cx, cy, cx + r, cy)
-            quadTo(cx, cy, cx, cy + r)
-            quadTo(cx, cy, cx - r, cy)
-            quadTo(cx, cy, cx, cy - r)
-            close()
-        }
-        c.drawPath(path, fill(color))
+        c.drawPath(path, fill(0xFFFAFAF8.toInt()))
+        c.drawPath(path, strokePaint(0xFF3A3A38.toInt(), 2f).apply { pathEffect = CornerPathEffect(r * 0.1f) })
     }
 
     private fun heart(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
@@ -386,137 +572,18 @@ internal object NotebookWrappedRenderer {
             close()
         }
         c.drawPath(path, fill(color))
-        c.drawPath(path, strokePaint(ColorUtils.blendARGB(color, Color.BLACK, 0.2f), 2.5f))
-    }
-
-    private fun note(c: Canvas, cx: Float, cy: Float, size: Float, color: Int, deg: Float) {
-        rotated(c, deg, cx, cy) {
-            val head = RectF(cx - size * 0.34f, cy + size * 0.1f, cx + size * 0.2f, cy + size * 0.42f)
-            c.save(); c.rotate(-20f, head.centerX(), head.centerY()); c.drawOval(head, fill(color)); c.restore()
-            val stemX = head.right - 3f
-            c.drawLine(stemX, head.centerY(), stemX, cy - size * 0.5f, strokePaint(color, size * 0.09f))
-            val flag = Path().apply {
-                moveTo(stemX, cy - size * 0.5f)
-                cubicTo(stemX + size * 0.4f, cy - size * 0.42f, stemX + size * 0.45f, cy - size * 0.1f, stemX + size * 0.22f, cy + size * 0.04f)
-            }
-            c.drawPath(flag, strokePaint(color, size * 0.09f))
-        }
-    }
-
-    private fun squiggle(c: Canvas, x1: Float, y: Float, x2: Float, amp: Float, color: Int, stroke: Float) {
-        val path = Path().apply {
-            moveTo(x1, y)
-            var x = x1
-            var up = true
-            val step = 26f
-            while (x < x2) {
-                quadTo(x + step / 2f, y + if (up) -amp else amp, x + step, y)
-                x += step
-                up = !up
-            }
-        }
-        c.drawPath(path, strokePaint(color, stroke))
-    }
-
-    private fun scribbleCircle(c: Canvas, r: RectF, color: Int, stroke: Float) {
-        val paint = strokePaint(color, stroke)
-        c.drawArc(r, 196f, 334f, false, paint)
-        val r2 = RectF(r).apply { inset(-12f, -9f); offset(6f, 4f) }
-        c.drawArc(r2, 150f, 170f, false, paint)
     }
 
     private fun dashedLine(c: Canvas, x1: Float, y: Float, x2: Float, color: Int) {
-        c.drawLine(x1, y, x2, y, strokePaint(color, 3f).apply { pathEffect = DashPathEffect(floatArrayOf(16f, 14f), 0f) })
-    }
-
-    private fun tape(c: Canvas, cx: Float, cy: Float, w: Float, h: Float, deg: Float, color: Int) {
-        rotated(c, deg, cx, cy) {
-            val l = cx - w / 2f
-            val r = cx + w / 2f
-            val t = cy - h / 2f
-            val b = cy + h / 2f
-            val teeth = 6
-            val path = Path().apply {
-                moveTo(l, t)
-                lineTo(r, t)
-                for (k in 0..teeth) lineTo(r + if (k % 2 == 0) 0f else 8f, t + (b - t) * k / teeth)
-                lineTo(l, b)
-                for (k in teeth downTo 0) lineTo(l - if (k % 2 == 0) 0f else 8f, t + (b - t) * k / teeth)
-                close()
-            }
-            c.drawPath(path, fill(ColorUtils.setAlphaComponent(color, 205)))
-            c.save()
-            c.clipPath(path)
-            val stripe = strokePaint(ColorUtils.setAlphaComponent(Color.WHITE, 90), 9f)
-            var x = l - h
-            while (x < r + h) { c.drawLine(x, b, x + h, t, stripe); x += 30f }
-            c.restore()
-        }
+        c.drawLine(x1, y, x2, y, strokePaint(color, 2.5f).apply { pathEffect = DashPathEffect(floatArrayOf(14f, 12f), 0f) })
     }
 
     private fun softShadow(c: Canvas, rect: RectF, radius: Float, alpha: Int = 70) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(alpha, 40, 30, 10)
-            maskFilter = BlurMaskFilter(18f, BlurMaskFilter.Blur.NORMAL)
+            color = Color.argb(alpha, 30, 24, 10)
+            maskFilter = BlurMaskFilter(16f, BlurMaskFilter.Blur.NORMAL)
         }
-        c.drawRoundRect(RectF(rect).apply { offset(5f, 10f) }, radius, radius, paint)
-    }
-
-    private fun stickyNote(c: Canvas, rect: RectF, color: Int, deg: Float, tapeColor: Int) {
-        rotated(c, deg, rect.centerX(), rect.centerY()) {
-            softShadow(c, rect, 6f)
-            c.drawRoundRect(rect, 6f, 6f, fill(color))
-            val fold = Path().apply {
-                moveTo(rect.right, rect.bottom - 30f)
-                lineTo(rect.right - 30f, rect.bottom)
-                lineTo(rect.right, rect.bottom)
-                close()
-            }
-            c.drawPath(fold, fill(ColorUtils.blendARGB(color, Color.BLACK, 0.12f)))
-            tape(c, rect.left + 70f, rect.top + 2f, 96f, 30f, -6f, tapeColor)
-        }
-    }
-
-    private fun polaroid(c: Canvas, bmp: Bitmap?, left: Float, top: Float, size: Float, deg: Float, p: Palette) {
-        val pad = 18f
-        val frame = RectF(left, top, left + size + pad * 2, top + size + pad * 2 + 52f)
-        rotated(c, deg, frame.centerX(), frame.centerY()) {
-            softShadow(c, frame, 8f, 90)
-            c.drawRoundRect(frame, 8f, 8f, fill(Color.WHITE))
-            val img = RectF(frame.left + pad, frame.top + pad, frame.left + pad + size, frame.top + pad + size)
-            drawCrop(c, bmp, img, 0f, tint(p.accent, 0.4f), p.ink)
-
-            squiggle(c, frame.left + pad + 8f, frame.bottom - 28f, frame.left + pad + 150f, 5f, p.sub, 4f)
-            tape(c, frame.left + 28f, frame.top + 6f, 110f, 38f, -38f, p.accent2)
-            tape(c, frame.right - 28f, frame.top + 6f, 110f, 38f, 38f, p.accent3)
-        }
-    }
-
-    private fun stamp(c: Canvas, cx: Float, cy: Float, label: String, color: Int, ink: Int) {
-        val paint = ShareCardRenderer.paint(ink, 38f, Weight.Bold, letterSpacing = 0.12f, align = Paint.Align.CENTER)
-        val w = paint.measureText(label) + 84f
-        val rect = RectF(cx - w / 2f, cy - 40f, cx + w / 2f, cy + 40f)
-        rotated(c, -4f, cx, cy) {
-            c.drawRoundRect(rect, 40f, 40f, fill(ColorUtils.setAlphaComponent(color, 70)))
-            c.drawRoundRect(rect, 40f, 40f, strokePaint(color.darker(0.85f), 5f))
-            c.drawRoundRect(RectF(rect).apply { inset(9f, 9f) }, 32f, 32f, strokePaint(color.darker(0.85f), 2.5f).apply {
-                pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
-            })
-            c.drawText(label, cx, cy + 13f, paint)
-        }
-    }
-
-    private fun rankBadge(c: Canvas, cx: Float, cy: Float, rank: Int, p: Palette) {
-        val colors = intArrayOf(p.accent2, p.accent3, p.accent, tint(p.accent2, 0.8f), tint(p.accent3, 0.8f))
-        val color = colors[(rank - 1).coerceIn(0, 4)]
-        val r = 52f
-        softShadow(c, RectF(cx - r, cy - r, cx + r, cy + r), r, 60)
-        c.drawCircle(cx, cy, r, fill(color))
-        c.drawCircle(cx, cy, r, strokePaint(p.ink, 4f))
-        c.drawCircle(cx, cy, r - 10f, strokePaint(Color.WHITE, 3f).apply { pathEffect = DashPathEffect(floatArrayOf(8f, 7f), 0f) })
-        val paint = ShareCardRenderer.paint(p.ink, 60f, Weight.Bold, align = Paint.Align.CENTER)
-        c.drawText(rank.toString(), cx, cy + 21f, paint)
-        if (rank == 1) star(c, cx + 36f, cy - 46f, 22f, p.accent2, 15f)
+        c.drawRoundRect(RectF(rect).apply { offset(4f, 9f) }, radius, radius, paint)
     }
 
     private fun cropSrc(bmp: Bitmap): Rect {
@@ -526,7 +593,6 @@ internal object NotebookWrappedRenderer {
 
     private fun placeholder(c: Canvas, rect: RectF, bg: Int, fg: Int) {
         c.drawRect(rect, fill(bg))
-
         val notePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ColorUtils.setAlphaComponent(fg, 150)
             textSize = rect.width() * 0.45f
