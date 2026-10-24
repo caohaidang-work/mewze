@@ -327,6 +327,7 @@
     <string name="queue_autoplay_desc">Nhạc tương tự sẽ tiếp tục phát</string>
     <string name="share_tab_song">Bài hát</string>
     <string name="share_tab_lyrics">Lời bài hát</string>
+    <string name="share_tab_card">Thẻ</string>
     <string name="share_copy_link">Sao chép đường liên kết</string>
     <string name="share_target_story">Tin</string>
     <string name="share_target_more">Thêm</string>
