@@ -156,6 +156,101 @@ object ShareCardRenderer {
         return bitmap
     }
 
+    /**
+     * "Card" template: a rounded colour card centred on the artwork background — big bold lyrics on top,
+     * artwork + title + artist + app mark in a bar underneath.
+     */
+    fun renderLyricsCard(
+        context: Context,
+        song: MediaMetadata,
+        lines: List<String>,
+        theme: CardTheme,
+        cover: Bitmap?,
+        brand: String,
+    ): Bitmap {
+        loadFonts(context)
+        val (bitmap, canvas) = newCard(theme, cover)
+
+        // White card + dark text for light/solid themes, vivid artwork-coloured card + white text otherwise.
+        val lightCard = theme.solidCard || ColorUtils.calculateLuminance(theme.text) < 0.4
+        val textColor = if (lightCard) 0xFF111114.toInt() else Color.WHITE
+        val subColor = if (lightCard) 0xFF6E6E76.toInt() else ColorUtils.setAlphaComponent(Color.WHITE, 190)
+
+        val cardLeft = 80f
+        val cardW = W - cardLeft * 2f
+        val pad = 64f
+        val textW = (cardW - pad * 2f).toInt()
+        val metaH = 132f
+        val gap = 56f
+        val maxTextH = 1560f - pad * 2f - gap - metaH
+
+        val text = lines.joinToString("\n")
+        var size = 76f
+        var layout = buildLayout(text, paint(textColor, size, Weight.Bold), textW, Layout.Alignment.ALIGN_NORMAL, spacing = 1.16f)
+        while (layout.height > maxTextH && size > 40f) {
+            size -= 4f
+            layout = buildLayout(text, paint(textColor, size, Weight.Bold), textW, Layout.Alignment.ALIGN_NORMAL, spacing = 1.16f)
+        }
+        if (layout.height > maxTextH) {
+            val lineHeight = (layout.height.toFloat() / layout.lineCount).coerceAtLeast(1f)
+            val fit = (maxTextH / lineHeight).toInt().coerceAtLeast(1)
+            layout = buildLayout(text, paint(textColor, size, Weight.Bold), textW, Layout.Alignment.ALIGN_NORMAL, maxLines = fit, spacing = 1.16f)
+        }
+
+        val cardH = pad + layout.height + gap + metaH + pad
+        val top = ((H - cardH) / 2f - 40f).coerceAtLeast(160f)
+        val card = RectF(cardLeft, top, cardLeft + cardW, top + cardH)
+        val radius = 64f
+
+        drawSoftShadow(canvas, card, radius, blur = 90f, dy = 36f, alpha = 130, clipOut = true)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        if (lightCard) {
+            fill.color = Color.WHITE
+        } else {
+            val hsl = FloatArray(3)
+            ColorUtils.colorToHSL(theme.top, hsl)
+            val sat = hsl[1].coerceIn(0.45f, 0.8f)
+            fill.shader = LinearGradient(
+                card.left, card.top, card.left, card.bottom,
+                ColorUtils.HSLToColor(floatArrayOf(hsl[0], sat, 0.44f)),
+                ColorUtils.HSLToColor(floatArrayOf(hsl[0], sat, 0.32f)),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRoundRect(card, radius, radius, fill)
+        if (!lightCard) {
+            canvas.drawRoundRect(
+                card, radius, radius,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2.5f
+                    color = ColorUtils.setAlphaComponent(Color.WHITE, 40)
+                }
+            )
+        }
+
+        canvas.save()
+        canvas.translate(card.left + pad, card.top + pad)
+        layout.draw(canvas)
+        canvas.restore()
+
+        val metaTop = card.top + pad + layout.height + gap
+        val coverRect = RectF(card.left + pad, metaTop, card.left + pad + metaH, metaTop + metaH)
+        drawRoundedBitmap(canvas, cover, coverRect, 24f, theme)
+
+        val markR = 30f
+        val markCx = card.right - pad - markR
+        drawLogoMark(canvas, markCx, metaTop + metaH / 2f, markR, textColor, if (lightCard) Color.WHITE else theme.bottom)
+
+        val tx = coverRect.right + 28f
+        val tw = markCx - markR - 24f - tx
+        val titlePaint = paint(textColor, 40f, Weight.Bold)
+        val artistPaint = paint(subColor, 32f, Weight.Regular)
+        canvas.drawText(ellipsize(song.title, titlePaint, tw), tx, metaTop + 56f, titlePaint)
+        canvas.drawText(ellipsize(song.artists.joinToString { it.name }, artistPaint, tw), tx, metaTop + 100f, artistPaint)
+        return bitmap
+    }
+
     fun renderSong(
         context: Context,
         song: MediaMetadata,

@@ -85,6 +85,7 @@ private val ChipColor = Color(0xFF3A3A3C)
 
 private const val TAB_SONG = 0
 private const val TAB_LYRICS = 1
+private const val TAB_CARD = 2
 
 /** Share a song as an image card. Pass [lyrics] to also get the "Lyrics" tab. */
 @Composable
@@ -130,7 +131,7 @@ private fun ShareSheet(
     val lines = remember(lyrics) { lyrics?.let { parseShareLines(it) }.orEmpty() }
     val hasLyrics = lines.isNotEmpty()
     var tab by rememberSaveable { mutableIntStateOf(if (initialTab == TAB_LYRICS && hasLyrics) TAB_LYRICS else TAB_SONG) }
-    if (!hasLyrics && tab == TAB_LYRICS) tab = TAB_SONG
+    if (!hasLyrics && tab != TAB_SONG) tab = TAB_SONG
 
     var cover by remember { mutableStateOf<Bitmap?>(null) }
     var coverLoaded by remember { mutableStateOf(false) }
@@ -153,7 +154,7 @@ private fun ShareSheet(
     }
     val pagerState = rememberPagerState(pageCount = { themes.size })
 
-    val lyricsTab = tab == TAB_LYRICS
+    val lyricsTab = tab == TAB_LYRICS || tab == TAB_CARD
     val nothingToShare = lyricsTab && selectedLines.isEmpty()
 
     /** Renders the card of the given theme for the current tab (null = nothing to render). */
@@ -161,6 +162,7 @@ private fun ShareSheet(
         val theme = themes[themeIndex.coerceIn(themes.indices)]
         if (lyricsTab) {
             if (selectedLines.isEmpty()) null
+            else if (tab == TAB_CARD) ShareCardRenderer.renderLyricsCard(context, song, selectedLines, theme, cover, brand)
             else ShareCardRenderer.renderLyrics(context, song, selectedLines, theme, cover, brand)
         } else {
             ShareCardRenderer.renderSong(context, song, theme, cover, brand)
@@ -224,7 +226,11 @@ private fun ShareSheet(
             if (hasLyrics) {
                 Spacer(12.dp)
                 ShareTabs(
-                    labels = listOf(stringResource(R.string.share_tab_song), stringResource(R.string.share_tab_lyrics)),
+                    labels = listOf(
+                        stringResource(R.string.share_tab_song),
+                        stringResource(R.string.share_tab_lyrics),
+                        stringResource(R.string.share_tab_card),
+                    ),
                     selectedIndex = tab,
                     onSelect = { tab = it },
                 )
@@ -354,7 +360,7 @@ private fun ShareTabs(labels: List<String>, selectedIndex: Int, onSelect: (Int) 
                     .clip(CircleShape)
                     .background(if (isSelected) Color.White else Color.Transparent)
                     .clickable { onSelect(index) }
-                    .padding(horizontal = 22.dp, vertical = 11.dp)
+                    .padding(horizontal = 16.dp, vertical = 11.dp)
             )
         }
     }
