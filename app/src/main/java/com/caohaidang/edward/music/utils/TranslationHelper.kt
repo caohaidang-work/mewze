@@ -149,9 +149,13 @@ object TranslationHelper {
     private val cache = LruCache<String, List<LineResult>>(6)
     private val requestPermits = Semaphore(2)
 
-    // Cả bài hát gần như luôn nằm trong 1 request -> tốn ít hạn mức miễn phí nhất.
-    private const val CHUNK_SIZE = 150
+    // Cụm nhỏ để model không bỏ sót / cắt cụt đầu ra ở các dòng cuối (trước đây 150 dòng/request
+    // khiến chỉ nửa đầu bài được dịch). Các cụm chạy song song (tối đa 2 request cùng lúc).
+    private const val CHUNK_SIZE = 40
     private const val MAX_ATTEMPTS = 3
+
+    // Số lần dịch bù riêng những dòng model trả thiếu.
+    private const val MAX_FILL_PASSES = 2
 
     class AiTranslateException(message: String, val code: Int = 0) : Exception(message)
 
@@ -200,6 +204,7 @@ object TranslationHelper {
         }
 
         var failure: AiTranslateException? = null
+        var missingFromModel = 0
         coroutineScope {
             pending.chunked(CHUNK_SIZE).map { chunk ->
                 async(Dispatchers.IO) {
@@ -215,6 +220,7 @@ object TranslationHelper {
                     withContext(Dispatchers.Main.immediate) {
                         chunk.forEach { p ->
                             val net = parsed[p.index]
+                            if (net == null) missingFromModel++
                             val translation = net?.translation?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, p.text) }
                             val roman = p.offlineRoman
                                 ?: net?.romanization?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, p.text) }
@@ -228,10 +234,42 @@ object TranslationHelper {
         }
 
         failure?.let { throw it }
-        cache.put(cacheKey, results.map { it ?: LineResult() })
+        // Chỉ cache khi model đã trả đủ mọi dòng, tránh lưu kết quả khuyết.
+        if (missingFromModel == 0) cache.put(cacheKey, results.map { it ?: LineResult() })
     }
 
+    /**
+     * Dịch một cụm; nếu model trả thiếu dòng (hay gặp ở nửa sau bài) thì gửi lại riêng các dòng thiếu.
+     */
     private suspend fun translateChunkWithRetry(
+        chunk: List<Triple<Int, String, Boolean>>,
+        targetLang: String,
+        wantTranslation: Boolean,
+        script: Script,
+        config: AiConfig,
+    ): Map<Int, LineResult> {
+        val merged = HashMap<Int, LineResult>()
+        var remaining = chunk
+        repeat(1 + MAX_FILL_PASSES) { pass ->
+            val parsed = try {
+                translateChunkOnce(remaining, targetLang, wantTranslation, script, config)
+            } catch (e: AiTranslateException) {
+                // Lần đầu thất bại thì báo lỗi; các lần bù thất bại thì giữ phần đã có.
+                if (pass == 0) throw e else return merged
+            }
+            merged.putAll(parsed)
+            remaining = chunk.filter { (index, _, needRoman) ->
+                val r = merged[index]
+                r == null ||
+                    (wantTranslation && r.translation.isNullOrBlank()) ||
+                    (needRoman && r.romanization.isNullOrBlank())
+            }
+            if (remaining.isEmpty()) return merged
+        }
+        return merged
+    }
+
+    private suspend fun translateChunkOnce(
         chunk: List<Triple<Int, String, Boolean>>,
         targetLang: String,
         wantTranslation: Boolean,
