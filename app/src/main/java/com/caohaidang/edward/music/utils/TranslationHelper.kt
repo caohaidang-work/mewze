@@ -1,8 +1,10 @@
 package com.caohaidang.edward.music.utils
 
 import android.util.LruCache
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
@@ -10,15 +12,27 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
-import okhttp3.HttpUrl.Companion.toHttpUrl
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+/**
+ * Dịch lyrics bằng một API AI (chuẩn OpenAI chat-completions) có gói miễn phí,
+ * thay cho endpoint Google Translate không chính thức vốn hay lỗi.
+ * Gửi cả cụm dòng một lúc để model có ngữ cảnh bài hát -> bản dịch tự nhiên hơn.
+ */
 object TranslationHelper {
     data class Language(val code: String, val name: String)
 
@@ -46,7 +60,33 @@ object TranslationHelper {
         Language("hi", "हिन्दी"),
     )
 
-    private val latinTargets = setOf("vi", "en", "id", "ms", "tl", "es", "pt", "fr", "de", "it", "tr")
+    // ---- Cấu hình nhà cung cấp AI ------------------------------------------------
+
+    enum class Provider(val label: String, val baseUrl: String, val defaultModel: String, val keyUrl: String) {
+        GEMINI(
+            "Google Gemini",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "gemini-flash-latest",
+            "https://aistudio.google.com/apikey",
+        ),
+        GROQ(
+            "Groq",
+            "https://api.groq.com/openai/v1/chat/completions",
+            "openai/gpt-oss-120b",
+            "https://console.groq.com/keys",
+        ),
+        CUSTOM("Custom (OpenAI-compatible)", "", "", ""),
+    }
+
+    data class AiConfig(
+        val provider: Provider,
+        val apiKey: String,
+        val model: String,
+        val customBaseUrl: String = "",
+    ) {
+        val baseUrl: String get() = if (provider == Provider.CUSTOM) customBaseUrl.trim() else provider.baseUrl
+        val isUsable: Boolean get() = apiKey.isNotBlank() && model.isNotBlank() && baseUrl.startsWith("http")
+    }
 
     data class LineResult(
         val translation: String? = null,
@@ -76,27 +116,47 @@ object TranslationHelper {
         Script.OTHER -> false
     }
 
+    private fun languageName(code: String): String = when (code) {
+        "zh-CN" -> "Simplified Chinese"
+        "zh-TW" -> "Traditional Chinese"
+        "tl" -> "Filipino (Tagalog)"
+        else -> Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH).ifBlank { code }
+    }
+
+    // ---- Mạng --------------------------------------------------------------------
+
     private val client by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .build()
     }
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
     private val cache = LruCache<String, List<LineResult>>(6)
-    private val requestPermits = Semaphore(3)
+    private val requestPermits = Semaphore(2)
 
+    private const val CHUNK_SIZE = 40
+    private const val MAX_ATTEMPTS = 3
+
+    class AiTranslateException(message: String, val code: Int = 0) : Exception(message)
+
+    /**
+     * Dịch / phiên âm [lines]. Mỗi cụm xong sẽ gọi [onResult] ngay (trên Main) để UI hiện dần.
+     * Ném [AiTranslateException] nếu có cụm thất bại sau khi retry, để UI báo lỗi cho người dùng.
+     */
     suspend fun translateLines(
         songId: String,
         lines: List<String>,
         targetLang: String,
         wantTranslation: Boolean,
         wantRomanization: Boolean,
+        config: AiConfig,
         onResult: (index: Int, result: LineResult) -> Unit,
     ) {
         val script = if (wantRomanization) detectScript(lines) else Script.OTHER
-        val cacheKey = "$songId|$targetLang|$wantTranslation|${script.name}"
+        val cacheKey = "$songId|$targetLang|$wantTranslation|${script.name}|${config.model}"
         cache.get(cacheKey)?.let { cached ->
             cached.forEachIndexed { index, result -> onResult(index, result) }
             return
@@ -104,109 +164,182 @@ object TranslationHelper {
 
         val results = arrayOfNulls<LineResult>(lines.size)
 
-        val memo = HashMap<String, kotlinx.coroutines.Deferred<LineResult>>()
+        // Dòng cần gửi lên AI: (index, text, cần phiên âm online?)
+        class Pending(val index: Int, val text: String, val needRoman: Boolean, val offlineRoman: String?)
+
+        val pending = ArrayList<Pending>()
+        lines.forEachIndexed { index, line ->
+            val text = line.trim()
+            if (text.isEmpty() || !text.any { it.isLetterOrDigit() }) {
+                results[index] = LineResult()
+                return@forEachIndexed
+            }
+            val wantsRoman = needsRomanization(text, script)
+            val offline = if (wantsRoman) Romanizer.romanize(text, korean = script == Script.KOREAN) else null
+            val needOnlineRoman = config.isUsable && wantsRoman && offline == null
+            if (!wantTranslation && !needOnlineRoman) {
+                val result = LineResult(null, offline)
+                results[index] = result
+                withContext(Dispatchers.Main.immediate) { onResult(index, result) }
+                return@forEachIndexed
+            }
+            pending += Pending(index, text, needOnlineRoman, offline)
+        }
+
+        var failure: AiTranslateException? = null
         coroutineScope {
-            lines.forEachIndexed { index, line ->
-                val text = line.trim()
-                if (text.isEmpty() || !text.any { it.isLetterOrDigit() }) {
-                    results[index] = LineResult()
-                    return@forEachIndexed
-                }
-                val wantsRoman = needsRomanization(text, script)
-
-                val offline = if (wantsRoman) Romanizer.romanize(text, korean = script == Script.KOREAN) else null
-
-                val needOnlineRoman = wantsRoman && offline == null
-                if (!wantTranslation && !needOnlineRoman) {
-                    val result = LineResult(null, offline)
-                    results[index] = result
-                    onResult(index, result)
-                    return@forEachIndexed
-                }
-                val deferred = memo.getOrPut("$needOnlineRoman|$text") {
-                    async(Dispatchers.IO) {
-                        translateWithRetry(text, targetLang, wantTranslation, needOnlineRoman)
+            pending.chunked(CHUNK_SIZE).map { chunk ->
+                async(Dispatchers.IO) {
+                    val parsed = try {
+                        translateChunkWithRetry(
+                            chunk.map { Triple(it.index, it.text, it.needRoman) },
+                            targetLang, wantTranslation, script, config,
+                        )
+                    } catch (e: AiTranslateException) {
+                        failure = failure ?: e
+                        emptyMap()
+                    }
+                    withContext(Dispatchers.Main.immediate) {
+                        chunk.forEach { p ->
+                            val net = parsed[p.index]
+                            val translation = net?.translation?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, p.text) }
+                            val roman = p.offlineRoman
+                                ?: net?.romanization?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, p.text) }
+                            val result = LineResult(translation, roman)
+                            results[p.index] = result
+                            onResult(p.index, result)
+                        }
                     }
                 }
-                async {
-                    val net = deferred.await()
-                    val result = LineResult(net.translation, offline ?: net.romanization)
-                    results[index] = result
-                    withContext(Dispatchers.Main.immediate) { onResult(index, result) }
-                }
-            }
+            }.awaitAll()
         }
-        val finished = results.map { it ?: LineResult() }
 
-        val attempted = finished.count { it.translation != null || it.romanization != null }
-        if (attempted >= lines.count { it.isNotBlank() } * 9 / 10) cache.put(cacheKey, finished)
+        failure?.let { throw it }
+        cache.put(cacheKey, results.map { it ?: LineResult() })
     }
 
-    private suspend fun translateWithRetry(text: String, targetLang: String, wantTranslation: Boolean, romanize: Boolean): LineResult {
+    private suspend fun translateChunkWithRetry(
+        chunk: List<Triple<Int, String, Boolean>>,
+        targetLang: String,
+        wantTranslation: Boolean,
+        script: Script,
+        config: AiConfig,
+    ): Map<Int, LineResult> {
+        var last: AiTranslateException? = null
         repeat(MAX_ATTEMPTS) { attempt ->
-            val result = runCatching {
-                requestPermits.withPermit {
-                    delay(60)
-                    translateOne(text, targetLang, wantTranslation, romanize)
+            try {
+                return requestPermits.withPermit {
+                    translateChunk(chunk, targetLang, wantTranslation, script, config)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AiTranslateException) {
+                last = e
+                // Key sai / không có quyền: retry vô ích.
+                if (e.code == 400 || e.code == 401 || e.code == 403 || e.code == 404) throw e
+                delay(if (e.code == 429) 4000L * (attempt + 1) else 800L * (attempt + 1))
+            } catch (e: Exception) {
+                last = AiTranslateException(e.message ?: "Network error")
+                delay(800L * (attempt + 1))
             }
-            result.getOrNull()?.let { return it }
-            if (result.exceptionOrNull() is kotlin.coroutines.cancellation.CancellationException) throw result.exceptionOrNull()!!
-            delay(500L * (attempt + 1))
         }
-        return LineResult()
+        throw last ?: AiTranslateException("Translation failed")
     }
 
-    private const val MAX_ATTEMPTS = 4
-
-    private fun translateOne(text: String, targetLang: String, wantTranslation: Boolean, romanize: Boolean): LineResult {
-        var translation: String? = null
-        var romanization: String? = null
-
-        val root = request(text, targetLang, withRomanization = romanize, sourceLang = if (romanize) "ja" else "auto")
-        if (wantTranslation) translation = extractTranslation(root)
-        if (romanize && targetLang in latinTargets) romanization = extractRomanization(root)
-        if (romanize && romanization == null && targetLang !in latinTargets) {
-            romanization = extractRomanization(request(text, "en", withRomanization = true, sourceLang = "ja"))
+    private fun translateChunk(
+        chunk: List<Triple<Int, String, Boolean>>,
+        targetLang: String,
+        wantTranslation: Boolean,
+        script: Script,
+        config: AiConfig,
+    ): Map<Int, LineResult> {
+        val romanStyle = when (script) {
+            Script.KOREAN -> "Revised Romanization of Korean"
+            Script.JAPANESE -> "Hepburn romaji"
+            Script.OTHER -> "standard Latin-script romanization"
         }
-        val cleanTranslation = translation?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, text) }
-        return LineResult(cleanTranslation, romanization?.trim()?.takeIf { it.isNotEmpty() && !sameText(it, text) })
+        val system = buildString {
+            append("You translate song lyrics. The input is a JSON array of lyric lines from ONE song, in order, ")
+            append("so use neighbouring lines for context (metaphors, slang, repeated hooks).\n")
+            if (wantTranslation) {
+                append("- Translate every line into ${languageName(targetLang)}. Keep the poetic, natural tone of a song; ")
+                append("do not translate word-for-word, do not add explanations, do not censor. ")
+                append("Keep each translation to one line. If a line is already in the target language, copy it unchanged.\n")
+            }
+            append("- For items with \"roman\": true also give a $romanStyle romanization of the original line in field \"r\".\n")
+            append("Reply with ONLY a JSON object: {\"lines\":[{\"i\":<same i as input>,")
+            if (wantTranslation) append("\"t\":\"<translation>\",")
+            append("\"r\":\"<romanization or empty string>\"}]}. ")
+            append("Return exactly one object per input item, same i values, no markdown fences.")
+        }
+        val userContent = buildJsonArray {
+            chunk.forEach { (index, text, needRoman) ->
+                add(buildJsonObject {
+                    put("i", index)
+                    put("text", text)
+                    if (needRoman) put("roman", true)
+                })
+            }
+        }.toString()
+
+        val body = buildJsonObject {
+            put("model", config.model)
+            put("temperature", 0.3)
+            put("response_format", buildJsonObject { put("type", "json_object") })
+            put("messages", buildJsonArray {
+                add(buildJsonObject { put("role", "system"); put("content", system) })
+                add(buildJsonObject { put("role", "user"); put("content", userContent) })
+            })
+        }.toString()
+
+        val request = Request.Builder()
+            .url(config.baseUrl)
+            .header("Authorization", "Bearer ${config.apiKey.trim()}")
+            .post(body.toRequestBody(jsonMedia))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw AiTranslateException(extractError(text) ?: "HTTP ${response.code}", response.code)
+            }
+            val content = json.parseToJsonElement(text).jsonObject["choices"]
+                ?.jsonArray?.firstOrNull()?.jsonObject
+                ?.get("message")?.jsonObject
+                ?.get("content")?.jsonPrimitive?.contentOrNull
+                ?: throw AiTranslateException("Empty response")
+            return parseLines(content, wantTranslation)
+        }
+    }
+
+    private fun extractError(body: String): String? = runCatching {
+        val root = json.parseToJsonElement(body)
+        val obj = if (root is JsonArray) root.firstOrNull()?.jsonObject else root.jsonObject
+        obj?.get("error")?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
+
+    private fun parseLines(content: String, wantTranslation: Boolean): Map<Int, LineResult> {
+        // Một số model vẫn bọc ```json ... ``` dù đã yêu cầu không.
+        val start = content.indexOf('{')
+        val end = content.lastIndexOf('}')
+        if (start < 0 || end <= start) throw AiTranslateException("Unreadable response")
+        val root = runCatching { json.parseToJsonElement(content.substring(start, end + 1)).jsonObject }
+            .getOrElse { throw AiTranslateException("Unreadable response") }
+        val array = root["lines"] as? JsonArray ?: throw AiTranslateException("Unreadable response")
+        val out = HashMap<Int, LineResult>()
+        array.forEach { element ->
+            val obj = element as? JsonObject ?: return@forEach
+            val index = obj["i"]?.jsonPrimitive?.intOrNull ?: return@forEach
+            val t = if (wantTranslation) obj["t"]?.jsonPrimitive?.contentOrNull else null
+            val r = obj["r"]?.jsonPrimitive?.contentOrNull
+            out[index] = LineResult(t, r)
+        }
+        if (out.isEmpty()) throw AiTranslateException("Empty translation")
+        return out
     }
 
     private fun sameText(a: String, b: String) =
         a.filter { it.isLetterOrDigit() }.equals(b.filter { it.isLetterOrDigit() }, ignoreCase = true)
-
-    private fun request(text: String, targetLang: String, withRomanization: Boolean, sourceLang: String = "auto"): JsonArray {
-        val url = "https://translate.googleapis.com/translate_a/single".toHttpUrl().newBuilder()
-            .addQueryParameter("client", "gtx")
-            .addQueryParameter("sl", sourceLang)
-            .addQueryParameter("tl", targetLang)
-            .addQueryParameter("dt", "t")
-            .apply { if (withRomanization) addQueryParameter("dt", "rm") }
-            .addQueryParameter("q", text)
-            .build()
-        val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
-        client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Translate HTTP ${response.code}" }
-            val body = checkNotNull(response.body?.string()) { "Empty translate response" }
-            return json.parseToJsonElement(body).jsonArray
-        }
-    }
-
-    private fun segments(root: JsonArray): List<JsonArray> =
-        (root.getOrNull(0) as? JsonArray)?.mapNotNull { it as? JsonArray }.orEmpty()
-
-    private fun extractTranslation(root: JsonArray): String? =
-        segments(root).mapNotNull { (it.getOrNull(0) as? JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.contentOrNull }
-            .joinToString("")
-            .takeIf { it.isNotBlank() }
-
-    private fun extractRomanization(root: JsonArray): String? =
-        segments(root)
-            .filter { it.getOrNull(0) == null || it.getOrNull(0) is JsonNull }
-            .mapNotNull { (it.getOrNull(2) as? JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.contentOrNull }
-            .joinToString(" ")
-            .takeIf { it.isNotBlank() }
 
     suspend fun clearModels() {
         cache.evictAll()
