@@ -360,4 +360,9 @@
     <string name="queue_clear">Clear</string>
     <string name="add_songs_to_queue">Add songs to queue</string>
     <string name="queue_autoplay_desc">Similar music will keep playing</string>
+    <string name="share_tab_song">Song</string>
+    <string name="share_tab_lyrics">Lyrics</string>
+    <string name="share_copy_link">Copy link</string>
+    <string name="share_target_story">Story</string>
+    <string name="share_target_more">More</string>
 </resources>

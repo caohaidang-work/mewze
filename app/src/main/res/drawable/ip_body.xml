@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Grey iPod body (flat colour, so the screen's corner masks - ip_corner_mask.xml - match it exactly). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FF9E9E9F" />
+    <stroke
+        android:width="1dp"
+        android:color="#FFB6B6B8" />
+    <corners android:radius="20dp" />
+</shape>

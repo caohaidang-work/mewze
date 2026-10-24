@@ -16,6 +16,17 @@
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
+
+            <intent>
+                <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
+            </intent>
+            <!-- share sheet: list the apps that accept an image, plus Instagram for the story button -->
+            <intent>
+                <action android:name="android.intent.action.SEND" />
+                <data android:mimeType="image/png" />
+            </intent>
+            <package android:name="com.instagram.android" />
+
     </queries>
     <application
         android:name=".App"

@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
@@ -16,6 +18,47 @@ import java.io.File
 object ShareUtils {
     private const val INSTAGRAM_PACKAGE = "com.instagram.android"
     private const val INSTAGRAM_STORY_ACTION = "com.instagram.share.ADD_TO_STORY"
+
+    /** An app that can receive the shared image (shown in the share sheet's bottom row). */
+    class Target(val packageName: String, val activityName: String, val label: String, val icon: Drawable)
+
+    /** Apps that accept a PNG via ACTION_SEND, one per package, Instagram excluded (it has its own Story entry). */
+    fun imageTargets(context: Context, limit: Int = 8): List<Target> {
+        val pm = context.packageManager
+        val probe = Intent(Intent.ACTION_SEND).apply { type = "image/png" }
+        val infos = runCatching { pm.queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY) }
+            .getOrDefault(emptyList())
+        return infos.asSequence()
+            .map { it.activityInfo }
+            .filter { it.packageName != context.packageName && it.packageName != INSTAGRAM_PACKAGE }
+            .distinctBy { it.packageName }
+            .map { Target(it.packageName, it.name, it.loadLabel(pm).toString(), it.loadIcon(pm)) }
+            .take(limit)
+            .toList()
+    }
+
+    fun isInstagramInstalled(context: Context): Boolean =
+        runCatching { context.packageManager.getPackageInfo(INSTAGRAM_PACKAGE, 0) }.isSuccess
+
+    fun instagramIcon(context: Context): Drawable? =
+        runCatching { context.packageManager.getApplicationIcon(INSTAGRAM_PACKAGE) }.getOrNull()
+
+    fun shareImageTo(context: Context, uri: Uri, link: String?, target: Target) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            setClassName(target.packageName, target.activityName)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            if (link != null) putExtra(Intent.EXTRA_TEXT, link)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            clipData = ClipData.newRawUri(null, uri)
+        }
+        context.grantUriPermission(target.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            shareImage(context, uri, link)
+        }
+    }
 
     fun musicLink(songId: String) = "https://music.youtube.com/watch?v=$songId"
 

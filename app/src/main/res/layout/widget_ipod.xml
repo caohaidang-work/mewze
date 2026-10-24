@@ -1,91 +1,258 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-"iPod" home-screen widget. The whole face is one bitmap (see IpodWidgetRenderer); everything on top is
-a transparent click area. ip_hit_app covers the whole widget (opens the app). ip_grid is a 3x3 grid that
-the renderer pads at run time so it sits exactly over the click wheel:
+"iPod" home-screen widget. Nothing here is stretched out of shape:
+  - the body is a shape drawable; the screen's corners are rounded by 4 small corner masks,
+  - the screen background is the blurred cover (centerCrop) under a dark scrim,
+  - title / artist / times are TextViews and the bar is a ProgressBar, so they are never distorted,
+  - the cover and the click wheel are SQUARE bitmaps shown with fitCenter, so they stay square / round
+    on any widget size (launchers report the widget size only roughly).
 
+      [ screen: cover / title / artist / bar / like + queue ][ wheel cell: wheel bitmap + 3x3 click grid ]
+
+Click grid inside the wheel cell:
       [ ip_hit_menu (MUSIC)             ]
       [ prev ][ ip_hit_center ][ next   ]
       [        ip_hit_play              ]
 
-Only RemoteViews-safe classes (FrameLayout / LinearLayout / ImageView).
+Only RemoteViews-safe classes (FrameLayout / LinearLayout / ImageView / TextView / ProgressBar).
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/ip_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/ip_body">
 
-    <ImageView
-        android:id="@+id/ip_image"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="fitXY"
-        android:src="@drawable/ip_preview" />
-
+    <!-- tapping anywhere else opens the app -->
     <FrameLayout
         android:id="@+id/ip_hit_app"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
     <LinearLayout
-        android:id="@+id/ip_grid"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingTop="10dp"
+        android:paddingRight="10dp"
+        android:paddingBottom="10dp">
 
-        <!-- top row: the MUSIC label -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="3"
-            android:orientation="horizontal">
+        <!-- screen: blurred cover, cover on top, title / artist, progress, like + queue -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="11">
+
+            <ImageView
+                android:id="@+id/ip_screen_bg"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitXY"
+                android:src="@drawable/ip_screen_scrim" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingLeft="12dp"
+                android:paddingTop="10dp"
+                android:paddingRight="12dp"
+                android:paddingBottom="8dp">
+
+                <!-- cover: square, centred in whatever height is left -->
+                <ImageView
+                    android:id="@+id/ip_cover"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/ip_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/ip_artist"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textColor="#FFB4B8C2"
+                    android:textSize="11sp" />
+
+                <ProgressBar
+                    android:id="@+id/ip_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:layout_marginTop="8dp"
+                    android:indeterminate="false"
+                    android:max="1000"
+                    android:maxHeight="4dp"
+                    android:minHeight="4dp"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/ip_progress" />
+
+                <!-- elapsed | like + queue | duration -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/ip_time_now"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:maxLines="1"
+                        android:text="0:00"
+                        android:textColor="#E6FFFFFF"
+                        android:textSize="9sp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/ip_like"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:padding="3dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ip_ic_heart_border" />
+
+                        <ImageView
+                            android:id="@+id/ip_queue"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_marginLeft="10dp"
+                            android:padding="3dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ip_ic_queue" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/ip_time_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:maxLines="1"
+                        android:text="0:00"
+                        android:textColor="#E6FFFFFF"
+                        android:textSize="9sp" />
+                </LinearLayout>
+            </LinearLayout>
 
             <FrameLayout
-                android:id="@+id/ip_hit_menu"
+                android:id="@+id/ip_hit_screen"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
-        </LinearLayout>
 
-        <!-- middle row: previous | centre button | next -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="4"
-            android:orientation="horizontal">
+            <!-- round the screen's 4 corners (same colour as the body) -->
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="top|left"
+                android:src="@drawable/ip_corner_mask" />
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="top|right"
+                android:rotation="90"
+                android:src="@drawable/ip_corner_mask" />
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="bottom|right"
+                android:rotation="180"
+                android:src="@drawable/ip_corner_mask" />
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="bottom|left"
+                android:rotation="270"
+                android:src="@drawable/ip_corner_mask" />
+        </FrameLayout>
 
-            <FrameLayout
-                android:id="@+id/ip_hit_prev"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="3"
-                android:contentDescription="@string/ip_cd_prev" />
+        <!-- click wheel -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginLeft="8dp"
+            android:layout_weight="8">
 
-            <FrameLayout
-                android:id="@+id/ip_hit_center"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="4" />
-
-            <FrameLayout
-                android:id="@+id/ip_hit_next"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="3"
-                android:contentDescription="@string/ip_cd_next" />
-        </LinearLayout>
-
-        <!-- bottom row: play / pause -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="3"
-            android:orientation="horizontal">
-
-            <FrameLayout
-                android:id="@+id/ip_hit_play"
+            <ImageView
+                android:id="@+id/ip_wheel"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:contentDescription="@string/ip_cd_play" />
-        </LinearLayout>
+                android:scaleType="fitCenter" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <!-- top row: the MUSIC label -->
+                <FrameLayout
+                    android:id="@+id/ip_hit_menu"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="3" />
+
+                <!-- middle row: previous | centre button | next -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="4"
+                    android:orientation="horizontal">
+
+                    <FrameLayout
+                        android:id="@+id/ip_hit_prev"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="3"
+                        android:contentDescription="@string/ip_cd_prev" />
+
+                    <FrameLayout
+                        android:id="@+id/ip_hit_center"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="4" />
+
+                    <FrameLayout
+                        android:id="@+id/ip_hit_next"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="3"
+                        android:contentDescription="@string/ip_cd_next" />
+                </LinearLayout>
+
+                <!-- bottom row: play / pause -->
+                <FrameLayout
+                    android:id="@+id/ip_hit_play"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="3"
+                    android:contentDescription="@string/ip_cd_play" />
+            </LinearLayout>
+        </FrameLayout>
     </LinearLayout>
 </FrameLayout>
