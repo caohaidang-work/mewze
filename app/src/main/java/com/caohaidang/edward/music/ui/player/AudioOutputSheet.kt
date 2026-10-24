@@ -178,8 +178,8 @@ fun rememberAudioOutputs(): AudioOutputs {
 }
 
 private fun OutputKind.iconRes() = when (this) {
-    OutputKind.PHONE -> R.drawable.audio_smartphone
-    OutputKind.BLUETOOTH, OutputKind.WIRED, OutputKind.USB -> R.drawable.audio_headphones
+    OutputKind.PHONE -> R.drawable.player_audio_phone
+    OutputKind.BLUETOOTH, OutputKind.WIRED, OutputKind.USB -> R.drawable.player_audio_headphones
     OutputKind.HDMI, OutputKind.OTHER -> R.drawable.audio_speaker
 }
 
