@@ -88,10 +88,6 @@ import androidx.compose.ui.unit.sp
 import com.caohaidang.edward.music.BuildConfig
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.R
-import com.caohaidang.edward.music.constants.AiTranslateApiKeyKey
-import com.caohaidang.edward.music.constants.AiTranslateCustomUrlKey
-import com.caohaidang.edward.music.constants.AiTranslateModelKey
-import com.caohaidang.edward.music.constants.AiTranslateProviderKey
 import com.caohaidang.edward.music.constants.PlayerTextAlignmentKey
 import com.caohaidang.edward.music.constants.RomanizeLyricsKey
 import com.caohaidang.edward.music.constants.TranslateLanguageKey
@@ -130,17 +126,7 @@ fun Lyrics(
     var translationEnabled by rememberPreference(TranslateLyricsKey, true)
     var romanizationEnabled by rememberPreference(RomanizeLyricsKey, true)
     var targetLanguage by rememberPreference(TranslateLanguageKey, TranslationHelper.DEFAULT_LANGUAGE)
-    var aiProviderName by rememberPreference(AiTranslateProviderKey, TranslationHelper.Provider.GEMINI.name)
-    var aiApiKey by rememberPreference(AiTranslateApiKeyKey, "")
-    var aiModel by rememberPreference(AiTranslateModelKey, TranslationHelper.Provider.GEMINI.defaultModel)
-    var aiCustomUrl by rememberPreference(AiTranslateCustomUrlKey, "")
-    val aiConfig = TranslationHelper.AiConfig(
-        provider = TranslationHelper.Provider.entries.firstOrNull { it.name == aiProviderName }
-            ?: TranslationHelper.Provider.GEMINI,
-        apiKey = aiApiKey,
-        model = aiModel,
-        customBaseUrl = aiCustomUrl,
-    )
+    val aiConfig = TranslationHelper.defaultConfig
     var showTranslateDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -176,15 +162,10 @@ fun Lyrics(
 
     val extras = remember(lyrics) { mutableStateMapOf<Int, TranslationHelper.LineResult>() }
     val songId = mediaMetadata?.id
-    LaunchedEffect(
-        lyrics, songId, translationEnabled, romanizationEnabled, targetLanguage,
-        aiProviderName, aiApiKey, aiModel, aiCustomUrl
-    ) {
+    LaunchedEffect(lyrics, songId, translationEnabled, romanizationEnabled, targetLanguage) {
         extras.clear()
         if (songId == null || lyrics.isNullOrEmpty() || lyrics == LYRICS_NOT_FOUND) return@LaunchedEffect
         if (!translationEnabled && !romanizationEnabled) return@LaunchedEffect
-        // Gõ dở key/model thì chờ một chút, tránh bắn request cho từng ký tự.
-        delay(600)
         try {
             TranslationHelper.translateLines(
                 songId = songId,
@@ -463,13 +444,6 @@ fun Lyrics(
                 onRomanizationEnabledChange = { romanizationEnabled = it },
                 targetLanguage = targetLanguage,
                 onTargetLanguageChange = { targetLanguage = it },
-                aiConfig = aiConfig,
-                onAiConfigChange = {
-                    aiProviderName = it.provider.name
-                    aiApiKey = it.apiKey
-                    aiModel = it.model
-                    aiCustomUrl = it.customBaseUrl
-                },
                 onDismiss = { showTranslateDialog = false }
             )
         }
