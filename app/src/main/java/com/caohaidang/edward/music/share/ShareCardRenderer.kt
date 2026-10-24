@@ -206,38 +206,96 @@ object ShareCardRenderer {
         val lyricsRect = RectF(card.left, card.top, card.right, card.top + lyricsH)
         val barRect = RectF(card.left, lyricsRect.bottom, card.right, card.bottom)
 
-        // Translucent "glass" card (like the Instagram lyrics sticker): the blurred artwork behind stays visible
-        // through it, and the title/artist bar is a separate, slightly different tint divided by a hairline.
-        drawSoftShadow(canvas, card, radius, blur = 80f, dy = 30f, alpha = 70, clipOut = true)
+        // "Liquid glass" card: very translucent, luminous body (the blurred artwork shines through), a soft
+        // specular highlight in the top-left, glowing light-catching rim and a separately tinted info bar.
+        drawSoftShadow(canvas, card, radius, blur = 90f, dy = 34f, alpha = 60, clipOut = true)
         val cardPath = Path().apply { addRoundRect(card, radius, radius, Path.Direction.CW) }
         canvas.save()
         canvas.clipPath(cardPath)
-        val lyricsFill = Paint().apply {
-            color = if (lightCard) ColorUtils.setAlphaComponent(Color.WHITE, 150)
-            else ColorUtils.setAlphaComponent(Color.BLACK, 78)
-        }
-        val barFill = Paint().apply {
-            color = if (lightCard) ColorUtils.setAlphaComponent(Color.BLACK, 22)
-            else ColorUtils.setAlphaComponent(Color.BLACK, 56)
-        }
-        canvas.drawRect(lyricsRect, lyricsFill)
-        canvas.drawRect(barRect, lyricsFill)
-        canvas.drawRect(barRect, barFill)
+
+        // Body: light, frosted tint that fades top -> bottom, over a faint dark/white base for text contrast.
         canvas.drawRect(
-            barRect.left, barRect.top, barRect.right, barRect.top + 2f,
+            card,
             Paint().apply {
-                color = if (lightCard) ColorUtils.setAlphaComponent(Color.BLACK, 28)
-                else ColorUtils.setAlphaComponent(Color.WHITE, 34)
+                color = if (lightCard) ColorUtils.setAlphaComponent(Color.WHITE, 96)
+                else ColorUtils.setAlphaComponent(Color.BLACK, 34)
             }
         )
-        canvas.restore()
+        canvas.drawRect(
+            card,
+            Paint().apply {
+                shader = LinearGradient(
+                    card.left, card.top, card.left, card.bottom,
+                    ColorUtils.setAlphaComponent(Color.WHITE, if (lightCard) 90 else 58),
+                    ColorUtils.setAlphaComponent(Color.WHITE, if (lightCard) 30 else 14),
+                    Shader.TileMode.CLAMP
+                )
+            }
+        )
+        // Info bar: a separate, slightly deeper tint so it reads as its own pane.
+        canvas.drawRect(
+            barRect,
+            Paint().apply {
+                color = if (lightCard) ColorUtils.setAlphaComponent(Color.BLACK, 18)
+                else ColorUtils.setAlphaComponent(Color.BLACK, 46)
+            }
+        )
+        // Divider that fades out toward both ends.
+        canvas.drawRect(
+            barRect.left, barRect.top - 1f, barRect.right, barRect.top + 1.5f,
+            Paint().apply {
+                val c = if (lightCard) Color.BLACK else Color.WHITE
+                val a = if (lightCard) 36 else 70
+                shader = LinearGradient(
+                    barRect.left, 0f, barRect.right, 0f,
+                    intArrayOf(
+                        ColorUtils.setAlphaComponent(c, 0),
+                        ColorUtils.setAlphaComponent(c, a),
+                        ColorUtils.setAlphaComponent(c, 0)
+                    ),
+                    floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+                )
+            }
+        )
+        // Specular highlight blooming from the top-left corner.
+        canvas.drawRect(
+            card,
+            Paint().apply {
+                shader = RadialGradient(
+                    card.left + card.width() * 0.12f, card.top - card.height() * 0.02f, card.width() * 0.85f,
+                    ColorUtils.setAlphaComponent(Color.WHITE, if (lightCard) 150 else 92),
+                    Color.TRANSPARENT, Shader.TileMode.CLAMP
+                )
+            }
+        )
+        // Soft inner glow just inside the rim (blurred stroke, clipped to the card).
         canvas.drawRoundRect(
             card, radius, radius,
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                strokeWidth = 2f
-                color = if (lightCard) ColorUtils.setAlphaComponent(Color.WHITE, 120)
-                else ColorUtils.setAlphaComponent(Color.WHITE, 36)
+                strokeWidth = 22f
+                maskFilter = BlurMaskFilter(14f, BlurMaskFilter.Blur.NORMAL)
+                color = ColorUtils.setAlphaComponent(Color.WHITE, if (lightCard) 110 else 48)
+            }
+        )
+        canvas.restore()
+
+        // Light-catching rim: bright at top-left and bottom-right, faint in between.
+        canvas.drawRoundRect(
+            card, radius, radius,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 3f
+                shader = LinearGradient(
+                    card.left, card.top, card.right, card.bottom,
+                    intArrayOf(
+                        ColorUtils.setAlphaComponent(Color.WHITE, 235),
+                        ColorUtils.setAlphaComponent(Color.WHITE, 38),
+                        ColorUtils.setAlphaComponent(Color.WHITE, 38),
+                        ColorUtils.setAlphaComponent(Color.WHITE, 150)
+                    ),
+                    floatArrayOf(0f, 0.35f, 0.65f, 1f), Shader.TileMode.CLAMP
+                )
             }
         )
 
