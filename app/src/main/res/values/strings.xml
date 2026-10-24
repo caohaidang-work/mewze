@@ -181,7 +181,14 @@
     <string name="translate_lyrics">Translate lyrics</string>
     <string name="romanize_lyrics">Show romanization (Korean, Japanese)</string>
     <string name="translate_to">Translate to</string>
-    <string name="translate_disclaimer">Lyrics translation is provided by Google Translate and may not be accurate</string>
+    <string name="translate_disclaimer">Lyrics are translated by an AI model and may not be perfectly accurate</string>
+    <string name="ai_provider">AI provider</string>
+    <string name="ai_api_key">API key</string>
+    <string name="ai_api_key_hint">Free key: %1$s</string>
+    <string name="ai_model">Model</string>
+    <string name="ai_endpoint_url">Endpoint URL (…/chat/completions)</string>
+    <string name="ai_key_missing">Add a free AI API key below to translate lyrics</string>
+    <string name="ai_translate_failed">Translation failed: %1$s</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
     <plurals name="minute">

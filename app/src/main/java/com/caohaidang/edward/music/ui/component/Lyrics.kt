@@ -75,6 +75,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -87,6 +88,10 @@ import androidx.compose.ui.unit.sp
 import com.caohaidang.edward.music.BuildConfig
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.R
+import com.caohaidang.edward.music.constants.AiTranslateApiKeyKey
+import com.caohaidang.edward.music.constants.AiTranslateCustomUrlKey
+import com.caohaidang.edward.music.constants.AiTranslateModelKey
+import com.caohaidang.edward.music.constants.AiTranslateProviderKey
 import com.caohaidang.edward.music.constants.PlayerTextAlignmentKey
 import com.caohaidang.edward.music.constants.RomanizeLyricsKey
 import com.caohaidang.edward.music.constants.TranslateLanguageKey
@@ -106,6 +111,7 @@ import com.caohaidang.edward.music.ui.utils.fadingEdge
 import com.caohaidang.edward.music.utils.TranslationHelper
 import com.caohaidang.edward.music.utils.rememberEnumPreference
 import com.caohaidang.edward.music.utils.rememberPreference
+import android.widget.Toast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.time.Duration.Companion.seconds
@@ -124,7 +130,19 @@ fun Lyrics(
     var translationEnabled by rememberPreference(TranslateLyricsKey, true)
     var romanizationEnabled by rememberPreference(RomanizeLyricsKey, true)
     var targetLanguage by rememberPreference(TranslateLanguageKey, TranslationHelper.DEFAULT_LANGUAGE)
+    var aiProviderName by rememberPreference(AiTranslateProviderKey, TranslationHelper.Provider.GEMINI.name)
+    var aiApiKey by rememberPreference(AiTranslateApiKeyKey, "")
+    var aiModel by rememberPreference(AiTranslateModelKey, TranslationHelper.Provider.GEMINI.defaultModel)
+    var aiCustomUrl by rememberPreference(AiTranslateCustomUrlKey, "")
+    val aiConfig = TranslationHelper.AiConfig(
+        provider = TranslationHelper.Provider.entries.firstOrNull { it.name == aiProviderName }
+            ?: TranslationHelper.Provider.GEMINI,
+        apiKey = aiApiKey,
+        model = aiModel,
+        customBaseUrl = aiCustomUrl,
+    )
     var showTranslateDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
@@ -158,18 +176,32 @@ fun Lyrics(
 
     val extras = remember(lyrics) { mutableStateMapOf<Int, TranslationHelper.LineResult>() }
     val songId = mediaMetadata?.id
-    LaunchedEffect(lyrics, songId, translationEnabled, romanizationEnabled, targetLanguage) {
+    LaunchedEffect(
+        lyrics, songId, translationEnabled, romanizationEnabled, targetLanguage,
+        aiProviderName, aiApiKey, aiModel, aiCustomUrl
+    ) {
         extras.clear()
         if (songId == null || lyrics.isNullOrEmpty() || lyrics == LYRICS_NOT_FOUND) return@LaunchedEffect
         if (!translationEnabled && !romanizationEnabled) return@LaunchedEffect
-        TranslationHelper.translateLines(
-            songId = songId,
-            lines = lines.map { it.text },
-            targetLang = targetLanguage,
-            wantTranslation = translationEnabled,
-            wantRomanization = romanizationEnabled,
-            onResult = { index, result -> extras[index] = result }
-        )
+        // Gõ dở key/model thì chờ một chút, tránh bắn request cho từng ký tự.
+        delay(600)
+        try {
+            TranslationHelper.translateLines(
+                songId = songId,
+                lines = lines.map { it.text },
+                targetLang = targetLanguage,
+                wantTranslation = translationEnabled && aiConfig.isUsable,
+                wantRomanization = romanizationEnabled,
+                config = aiConfig,
+                onResult = { index, result -> extras[index] = result }
+            )
+        } catch (e: TranslationHelper.AiTranslateException) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.ai_translate_failed, e.message.orEmpty()),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     LaunchedEffect(lyrics) {
@@ -284,9 +316,13 @@ fun Lyrics(
                     val distance = if (!isSynced || displayedCurrentLineIndex < 0) 0
                     else abs(index - displayedCurrentLineIndex)
 
+                    // Đang lướt để đọc lời (lastPreviewTime != 0): bỏ hiệu ứng mờ để đọc rõ toàn bộ.
+                    // Sau LyricsPreviewTime không chạm nữa thì tự mờ lại như bình thường.
+                    val isReading = lastPreviewTime != 0L
+
                     val lineAlpha by animateFloatAsState(
                         targetValue = when {
-                            !isSynced || distance == 0 -> 1f
+                            !isSynced || isReading || distance == 0 -> 1f
                             distance == 1 -> 0.55f
                             distance == 2 -> 0.42f
                             else -> 0.3f
@@ -295,13 +331,13 @@ fun Lyrics(
                         label = "lyricAlpha"
                     )
                     val lineScale by animateFloatAsState(
-                        targetValue = if (isActive) 1f else 0.94f,
+                        targetValue = if (isActive || isReading) 1f else 0.94f,
                         animationSpec = tween(350),
                         label = "lyricScale"
                     )
                     // Càng xa dòng đang hát càng mờ (blur chỉ có hiệu lực trên Android 12+).
                     val lineBlur by animateDpAsState(
-                        targetValue = if (isActive) 0.dp else minOf(distance * 2.5f, 10f).dp,
+                        targetValue = if (isActive || isReading) 0.dp else minOf(distance * 2.5f, 10f).dp,
                         animationSpec = tween(350),
                         label = "lyricBlur"
                     )
@@ -427,6 +463,13 @@ fun Lyrics(
                 onRomanizationEnabledChange = { romanizationEnabled = it },
                 targetLanguage = targetLanguage,
                 onTargetLanguageChange = { targetLanguage = it },
+                aiConfig = aiConfig,
+                onAiConfigChange = {
+                    aiProviderName = it.provider.name
+                    aiApiKey = it.apiKey
+                    aiModel = it.model
+                    aiCustomUrl = it.customBaseUrl
+                },
                 onDismiss = { showTranslateDialog = false }
             )
         }

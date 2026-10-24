@@ -132,7 +132,14 @@
     <string name="translate_lyrics">Dịch lời bài hát</string>
     <string name="romanize_lyrics">Hiện phiên âm (tiếng Hàn, tiếng Nhật)</string>
     <string name="translate_to">Dịch sang</string>
-    <string name="translate_disclaimer">Bản dịch do Google Dịch cung cấp nên có thể chưa hoàn toàn chính xác</string>
+    <string name="translate_disclaimer">Bản dịch do mô hình AI thực hiện nên có thể chưa hoàn toàn chính xác</string>
+    <string name="ai_provider">Nhà cung cấp AI</string>
+    <string name="ai_api_key">API key</string>
+    <string name="ai_api_key_hint">Lấy key miễn phí: %1$s</string>
+    <string name="ai_model">Model</string>
+    <string name="ai_endpoint_url">URL endpoint (…/chat/completions)</string>
+    <string name="ai_key_missing">Nhập API key AI miễn phí bên dưới để dịch lời bài hát</string>
+    <string name="ai_translate_failed">Dịch thất bại: %1$s</string>
     <string name="sleep_timer">Hẹn giờ ngủ</string>
     <string name="end_of_song">Kết thúc bài hát</string>
     <plurals name="minute">
