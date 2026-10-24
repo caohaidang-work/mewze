@@ -149,7 +149,8 @@ object TranslationHelper {
     private val cache = LruCache<String, List<LineResult>>(6)
     private val requestPermits = Semaphore(2)
 
-    private const val CHUNK_SIZE = 40
+    // Cả bài hát gần như luôn nằm trong 1 request -> tốn ít hạn mức miễn phí nhất.
+    private const val CHUNK_SIZE = 150
     private const val MAX_ATTEMPTS = 3
 
     class AiTranslateException(message: String, val code: Int = 0) : Exception(message)
@@ -249,6 +250,8 @@ object TranslationHelper {
                 last = e
                 // Key sai / không có quyền: retry vô ích.
                 if (e.code == 400 || e.code == 401 || e.code == 403 || e.code == 404) throw e
+                // Hết hạn mức theo ngày: thử lại chỉ làm tốn thêm request.
+                if (e.code == 429 && e.message.orEmpty().contains("per day", ignoreCase = true)) throw e
                 delay(if (e.code == 429) 4000L * (attempt + 1) else 800L * (attempt + 1))
             } catch (e: Exception) {
                 last = AiTranslateException(e.message ?: "Network error")
