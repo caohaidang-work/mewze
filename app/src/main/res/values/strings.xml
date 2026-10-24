@@ -188,6 +188,7 @@
     <string name="ai_model">Model</string>
     <string name="ai_endpoint_url">Endpoint URL (…/chat/completions)</string>
     <string name="ai_key_missing">Add a free AI API key below to translate lyrics</string>
+    <string name="ai_key_not_configured">AI_TRANSLATE_KEY is not set in this build, so lyrics translation is off</string>
     <string name="ai_translate_failed">Translation failed: %1$s</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>

@@ -139,6 +139,7 @@
     <string name="ai_model">Model</string>
     <string name="ai_endpoint_url">URL endpoint (…/chat/completions)</string>
     <string name="ai_key_missing">Nhập API key AI miễn phí bên dưới để dịch lời bài hát</string>
+    <string name="ai_key_not_configured">Bản build này chưa có AI_TRANSLATE_KEY nên dịch lời bài hát đang tắt</string>
     <string name="ai_translate_failed">Dịch thất bại: %1$s</string>
     <string name="sleep_timer">Hẹn giờ ngủ</string>
     <string name="end_of_song">Kết thúc bài hát</string>
