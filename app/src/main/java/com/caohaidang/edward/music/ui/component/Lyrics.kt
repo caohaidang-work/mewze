@@ -166,6 +166,14 @@ fun Lyrics(
         extras.clear()
         if (songId == null || lyrics.isNullOrEmpty() || lyrics == LYRICS_NOT_FOUND) return@LaunchedEffect
         if (!translationEnabled && !romanizationEnabled) return@LaunchedEffect
+        android.util.Log.d(
+            "LyricsTranslate",
+            "translate=$translationEnabled lang=$targetLanguage provider=${aiConfig.provider} " +
+                "model=${aiConfig.model} keyLength=${aiConfig.apiKey.length} lines=${lines.size}"
+        )
+        if (translationEnabled && !aiConfig.isUsable) {
+            Toast.makeText(context, R.string.ai_key_not_configured, Toast.LENGTH_LONG).show()
+        }
         try {
             TranslationHelper.translateLines(
                 songId = songId,
@@ -177,6 +185,7 @@ fun Lyrics(
                 onResult = { index, result -> extras[index] = result }
             )
         } catch (e: TranslationHelper.AiTranslateException) {
+            android.util.Log.w("LyricsTranslate", "failed code=${e.code}: ${e.message}")
             Toast.makeText(
                 context,
                 context.getString(R.string.ai_translate_failed, e.message.orEmpty()),
