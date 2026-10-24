@@ -1,6 +1,7 @@
 package com.caohaidang.edward.music.utils
 
 import android.util.LruCache
+import com.caohaidang.edward.music.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -86,6 +87,17 @@ object TranslationHelper {
     ) {
         val baseUrl: String get() = if (provider == Provider.CUSTOM) customBaseUrl.trim() else provider.baseUrl
         val isUsable: Boolean get() = apiKey.isNotBlank() && model.isNotBlank() && baseUrl.startsWith("http")
+    }
+
+    /** Cấu hình gắn sẵn trong app, nạp từ BuildConfig (xem app/build.gradle.kts). */
+    val defaultConfig: AiConfig by lazy {
+        val provider = Provider.entries.firstOrNull { it.name.equals(BuildConfig.AI_TRANSLATE_PROVIDER, true) }
+            ?.takeIf { it != Provider.CUSTOM } ?: Provider.GEMINI
+        AiConfig(
+            provider = provider,
+            apiKey = BuildConfig.AI_TRANSLATE_KEY,
+            model = BuildConfig.AI_TRANSLATE_MODEL.ifBlank { provider.defaultModel },
+        )
     }
 
     data class LineResult(

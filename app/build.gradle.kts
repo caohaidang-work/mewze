@@ -13,6 +13,23 @@ val spotifyClientId: String = (
         ?: ""
 ).trim()
 
+// AI lyrics translation (OpenAI-compatible API with a free tier). Never commit the key: put it in
+// local.properties (git-ignored) or the env / -P property. Same lookup order as above.
+//   AI_TRANSLATE_KEY       API key (required, otherwise translation is silently disabled)
+//   AI_TRANSLATE_PROVIDER  GEMINI (default) or GROQ
+//   AI_TRANSLATE_MODEL     optional, defaults to the provider's default model
+fun secret(name: String): String = (
+    providers.gradleProperty(name).orNull
+        ?: System.getenv(name)
+        ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
+            Properties().apply { f.inputStream().use(::load) }.getProperty(name)
+        }
+        ?: ""
+).trim()
+val aiTranslateKey = secret("AI_TRANSLATE_KEY")
+val aiTranslateProvider = secret("AI_TRANSLATE_PROVIDER")
+val aiTranslateModel = secret("AI_TRANSLATE_MODEL")
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -34,6 +51,9 @@ android {
         versionCode = 2
         versionName = "2.0.0"
         buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"$spotifyClientId\"")
+        buildConfigField("String", "AI_TRANSLATE_KEY", "\"$aiTranslateKey\"")
+        buildConfigField("String", "AI_TRANSLATE_PROVIDER", "\"$aiTranslateProvider\"")
+        buildConfigField("String", "AI_TRANSLATE_MODEL", "\"$aiTranslateModel\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

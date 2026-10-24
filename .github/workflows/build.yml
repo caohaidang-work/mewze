@@ -27,6 +27,9 @@ jobs:
       - name: Build debug APK
         env:
           SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+          AI_TRANSLATE_KEY: ${{ secrets.AI_TRANSLATE_KEY }}
+          AI_TRANSLATE_PROVIDER: ${{ vars.AI_TRANSLATE_PROVIDER }}
+          AI_TRANSLATE_MODEL: ${{ vars.AI_TRANSLATE_MODEL }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
