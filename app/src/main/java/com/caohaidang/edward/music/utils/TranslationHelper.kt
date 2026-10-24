@@ -277,9 +277,17 @@ object TranslationHelper {
             append("You translate song lyrics. The input is a JSON array of lyric lines from ONE song, in order, ")
             append("so use neighbouring lines for context (metaphors, slang, repeated hooks).\n")
             if (wantTranslation) {
-                append("- Translate every line into ${languageName(targetLang)}. Keep the poetic, natural tone of a song; ")
-                append("do not translate word-for-word, do not add explanations, do not censor. ")
-                append("Keep each translation to one line. If a line is already in the target language, copy it unchanged.\n")
+                append("- Translate every line into ${languageName(targetLang)} as a gifted lyricist and literary poet would, ")
+                append("not as a machine translator. The goal is a poetic, emotionally resonant rendering that reads like real song lyrics ")
+                append("in ${languageName(targetLang)}, while staying faithful to the meaning.\n")
+                append("  * Preserve and, where natural, enrich metaphors, imagery, symbolism and wordplay; choose evocative, ")
+                append("lyrical vocabulary over plain everyday wording.\n")
+                append("  * Capture the emotion, mood and subtext of each line (longing, bitterness, tenderness, defiance), ")
+                append("using the surrounding lines to understand what the singer really means.\n")
+                append("  * Favour smooth rhythm and a gentle poetic flow; adapt idioms and slang into equally expressive native phrasing ")
+                append("instead of literal word-for-word translation. Keep repeated hooks consistent.\n")
+                append("  * Never add explanations or notes, never invent new story content, never censor. ")
+                append("Keep each translation to a single line. If a line is already in the target language, copy it unchanged.\n")
             }
             append("- For items with \"roman\": true also give a $romanStyle romanization of the original line in field \"r\".\n")
             append("Reply with ONLY a JSON object: {\"lines\":[{\"i\":<same i as input>,")
@@ -299,7 +307,7 @@ object TranslationHelper {
 
         val body = buildJsonObject {
             put("model", config.model)
-            put("temperature", 0.3)
+            put("temperature", 0.7)
             put("response_format", buildJsonObject { put("type", "json_object") })
             put("messages", buildJsonArray {
                 add(buildJsonObject { put("role", "system"); put("content", system) })
