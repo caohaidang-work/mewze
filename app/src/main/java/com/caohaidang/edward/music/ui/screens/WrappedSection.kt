@@ -51,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.constants.WrappedPeriod
+import com.caohaidang.edward.music.share.AfterSoundTexts
 import com.caohaidang.edward.music.share.CardTheme
 import com.caohaidang.edward.music.share.ShareCardRenderer
 import com.caohaidang.edward.music.share.ShareUtils
@@ -65,7 +66,11 @@ import kotlinx.coroutines.withContext
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private const val SLIDE_COUNT = 3
+private const val SLIDE_COUNT = 5
+
+/** Vị trí các thẻ trong danh sách slide. */
+private const val PAGE_SONGS = 1
+private const val PAGE_AFTER_SOUND_SONGS = 4
 
 /** Toàn bộ mục Wrapped (giao diện + ảnh chia sẻ) luôn hiển thị bằng tiếng Anh. */
 @Composable
@@ -162,6 +167,18 @@ private fun WrappedSectionContent(
             WrappedPeriod.MONTH -> CardTheme.WrappedMonth
             WrappedPeriod.YEAR -> CardTheme.WrappedYear
         }
+        val afterSound = AfterSoundTexts(
+            header = enContext.getString(
+                when (d.period) {
+                    WrappedPeriod.WEEK -> R.string.wrapped_as_header_week
+                    WrappedPeriod.MONTH -> R.string.wrapped_as_header_month
+                    WrappedPeriod.YEAR -> R.string.wrapped_as_header_year
+                }
+            ),
+            dateLabel = texts.periodLabel,
+            minutes = { m -> enContext.resources.getQuantityString(R.plurals.wrapped_as_minutes, m.toInt(), m.toInt()) },
+            plays = { n -> enContext.resources.getQuantityString(R.plurals.wrapped_as_plays, n, n) },
+        )
         slides = withContext(Dispatchers.Default) {
             listOf(
                 ShareCardRenderer.renderWrappedOverview(
@@ -170,6 +187,12 @@ private fun WrappedSectionContent(
                 ),
                 ShareCardRenderer.renderWrappedSongs(context, d.topSongs.map { it.song to it.playCount }, texts, images, theme),
                 ShareCardRenderer.renderWrappedArtists(context, d.topArtists.map { it.name to it.playTime }, texts, images, theme),
+                ShareCardRenderer.renderAfterSoundArtists(
+                    context, d.topArtists.map { it.name to it.playTime }, d.playCount, afterSound, images
+                ),
+                ShareCardRenderer.renderAfterSoundSongs(
+                    context, d.topSongs.map { it.song to it.playCount }, d.totalMillis / 60_000, d.songCount, afterSound, images
+                ),
             )
         }
     }
@@ -266,7 +289,7 @@ private fun WrappedSectionContent(
                     }
                 }
 
-                val link = if (pagerState.currentPage == 1) {
+                val link = if (pagerState.currentPage == PAGE_SONGS || pagerState.currentPage == PAGE_AFTER_SOUND_SONGS) {
                     current?.topSongs?.firstOrNull()?.song?.id?.let(ShareUtils::musicLink)
                 } else null
                 val fileName = "wrapped-${period.name.lowercase()}-${pagerState.currentPage + 1}"
