@@ -30,6 +30,7 @@ jobs:
           AI_TRANSLATE_KEY: ${{ secrets.AI_TRANSLATE_KEY }}
           AI_TRANSLATE_PROVIDER: ${{ vars.AI_TRANSLATE_PROVIDER }}
           AI_TRANSLATE_MODEL: ${{ vars.AI_TRANSLATE_MODEL }}
+          AI_TRANSLATE_FALLBACKS: ${{ secrets.AI_TRANSLATE_FALLBACKS }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
