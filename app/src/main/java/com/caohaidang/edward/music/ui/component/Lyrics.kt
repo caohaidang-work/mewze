@@ -126,7 +126,8 @@ fun Lyrics(
     var translationEnabled by rememberPreference(TranslateLyricsKey, true)
     var romanizationEnabled by rememberPreference(RomanizeLyricsKey, true)
     var targetLanguage by rememberPreference(TranslateLanguageKey, TranslationHelper.DEFAULT_LANGUAGE)
-    val aiConfig = TranslationHelper.defaultConfig
+    val aiConfigs = TranslationHelper.defaultConfigs
+    val aiUsable = aiConfigs.any { it.isUsable }
     var showTranslateDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -168,10 +169,11 @@ fun Lyrics(
         if (!translationEnabled && !romanizationEnabled) return@LaunchedEffect
         android.util.Log.d(
             "LyricsTranslate",
-            "translate=$translationEnabled lang=$targetLanguage provider=${aiConfig.provider} " +
-                "model=${aiConfig.model} keyLength=${aiConfig.apiKey.length} lines=${lines.size}"
+            "translate=$translationEnabled lang=$targetLanguage providers=" +
+                aiConfigs.joinToString { "${it.provider}/${it.model}(keyLength=${it.apiKey.length})" } +
+                " lines=${lines.size}"
         )
-        if (translationEnabled && !aiConfig.isUsable) {
+        if (translationEnabled && !aiUsable) {
             Toast.makeText(context, R.string.ai_key_not_configured, Toast.LENGTH_LONG).show()
         }
         try {
@@ -179,9 +181,9 @@ fun Lyrics(
                 songId = songId,
                 lines = lines.map { it.text },
                 targetLang = targetLanguage,
-                wantTranslation = translationEnabled && aiConfig.isUsable,
+                wantTranslation = translationEnabled && aiUsable,
                 wantRomanization = romanizationEnabled,
-                config = aiConfig,
+                configs = aiConfigs,
                 onResult = { index, result -> extras[index] = result }
             )
         } catch (e: TranslationHelper.AiTranslateException) {
