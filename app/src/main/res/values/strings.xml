@@ -353,6 +353,17 @@
     <string name="wrapped_top_songs">Top songs</string>
     <string name="wrapped_top_artists">Top artists</string>
     <string name="wrapped_empty">No listening data for this period yet. Play some music and come back!</string>
+    <string name="wrapped_as_header_week">your week in music</string>
+    <string name="wrapped_as_header_month">your month in music</string>
+    <string name="wrapped_as_header_year">your year in music</string>
+    <plurals name="wrapped_as_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <plurals name="wrapped_as_plays">
+        <item quantity="one">%1$d play</item>
+        <item quantity="other">%1$d plays</item>
+    </plurals>
     <string name="share_song">Share song</string>
     <string name="share_lyrics">Share lyrics</string>
     <string name="share_to_story">Post to story</string>
