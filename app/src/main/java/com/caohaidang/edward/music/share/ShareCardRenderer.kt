@@ -395,6 +395,25 @@ object ShareCardRenderer {
         theme: CardTheme,
     ): Bitmap = NotebookWrappedRenderer.artists(context, artists, texts, images, theme)
 
+    /** Thẻ "The After Sound" — top nghệ sĩ. */
+    fun renderAfterSoundArtists(
+        context: Context,
+        artists: List<Pair<String, Long>>,
+        playCount: Int,
+        texts: AfterSoundTexts,
+        images: WrappedImages,
+    ): Bitmap = AfterSoundRenderer.artists(context, artists, playCount, texts, images)
+
+    /** Thẻ "The After Sound" — top bài hát. */
+    fun renderAfterSoundSongs(
+        context: Context,
+        songs: List<Pair<MediaMetadata, Int>>,
+        totalMinutes: Long,
+        songCount: Int,
+        texts: AfterSoundTexts,
+        images: WrappedImages,
+    ): Bitmap = AfterSoundRenderer.songs(context, songs, totalMinutes, songCount, texts, images)
+
     private fun header(canvas: Canvas, texts: WrappedTexts, theme: CardTheme) {
         drawBrand(canvas, PAD, 160f, texts.brand, size = 40f, textColor = theme.text, markBg = theme.text, markFg = theme.bottom)
         canvas.drawText(texts.periodLabel, PAD, 238f, paint(theme.subtleText, 44f))
