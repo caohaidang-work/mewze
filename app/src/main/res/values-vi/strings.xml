@@ -310,6 +310,15 @@
     <string name="wrapped_top_songs">Top bài hát</string>
     <string name="wrapped_top_artists">Top nghệ sĩ</string>
     <string name="wrapped_empty">Chưa có dữ liệu nghe trong kỳ này. Hãy nghe nhạc rồi quay lại nhé!</string>
+    <string name="wrapped_as_header_week">tuần nhạc của bạn</string>
+    <string name="wrapped_as_header_month">tháng nhạc của bạn</string>
+    <string name="wrapped_as_header_year">năm nhạc của bạn</string>
+    <plurals name="wrapped_as_minutes">
+        <item quantity="other">%1$d phút</item>
+    </plurals>
+    <plurals name="wrapped_as_plays">
+        <item quantity="other">%1$d lượt nghe</item>
+    </plurals>
     <string name="share_song">Chia sẻ bài hát</string>
     <string name="share_lyrics">Chia sẻ lời bài hát</string>
     <string name="share_to_story">Đăng lên story</string>
