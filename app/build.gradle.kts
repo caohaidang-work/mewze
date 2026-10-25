@@ -16,8 +16,11 @@ val spotifyClientId: String = (
 // AI lyrics translation (OpenAI-compatible API with a free tier). Never commit the key: put it in
 // local.properties (git-ignored) or the env / -P property. Same lookup order as above.
 //   AI_TRANSLATE_KEY       API key (required, otherwise translation is silently disabled)
-//   AI_TRANSLATE_PROVIDER  GEMINI (default) or GROQ
+//   AI_TRANSLATE_PROVIDER  GEMINI (default), GROQ, CEREBRAS, MISTRAL or OPENROUTER
 //   AI_TRANSLATE_MODEL     optional, defaults to the provider's default model
+//   AI_TRANSLATE_FALLBACKS optional backup providers, tried in order when the primary fails or hits its
+//                          rate limit. Comma-separated PROVIDER=key or PROVIDER=key|model, e.g.
+//                          GROQ=gsk_xxx,CEREBRAS=csk_xxx,MISTRAL=xxx|mistral-small-latest
 fun secret(name: String): String = (
     providers.gradleProperty(name).orNull
         ?: System.getenv(name)
@@ -29,6 +32,7 @@ fun secret(name: String): String = (
 val aiTranslateKey = secret("AI_TRANSLATE_KEY")
 val aiTranslateProvider = secret("AI_TRANSLATE_PROVIDER")
 val aiTranslateModel = secret("AI_TRANSLATE_MODEL")
+val aiTranslateFallbacks = secret("AI_TRANSLATE_FALLBACKS")
 
 plugins {
     id("com.android.application")
@@ -54,6 +58,7 @@ android {
         buildConfigField("String", "AI_TRANSLATE_KEY", "\"$aiTranslateKey\"")
         buildConfigField("String", "AI_TRANSLATE_PROVIDER", "\"$aiTranslateProvider\"")
         buildConfigField("String", "AI_TRANSLATE_MODEL", "\"$aiTranslateModel\"")
+        buildConfigField("String", "AI_TRANSLATE_FALLBACKS", "\"$aiTranslateFallbacks\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

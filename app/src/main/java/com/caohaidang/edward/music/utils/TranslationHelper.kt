@@ -1,5 +1,6 @@
 package com.caohaidang.edward.music.utils
 
+import android.os.SystemClock
 import android.util.LruCache
 import com.caohaidang.edward.music.BuildConfig
 import kotlinx.coroutines.CancellationException
@@ -30,8 +31,9 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Dịch lyrics bằng một API AI (chuẩn OpenAI chat-completions) có gói miễn phí,
+ * Dịch lyrics bằng các API AI (chuẩn OpenAI chat-completions) có gói miễn phí,
  * thay cho endpoint Google Translate không chính thức vốn hay lỗi.
+ * Hỗ trợ nhiều provider: một cái lỗi / hết hạn mức thì tự chuyển sang cái tiếp theo.
  * Gửi cả cụm dòng một lúc để model có ngữ cảnh bài hát -> bản dịch tự nhiên hơn.
  */
 object TranslationHelper {
@@ -76,6 +78,24 @@ object TranslationHelper {
             "openai/gpt-oss-120b",
             "https://console.groq.com/keys",
         ),
+        CEREBRAS(
+            "Cerebras",
+            "https://api.cerebras.ai/v1/chat/completions",
+            "gpt-oss-120b",
+            "https://cloud.cerebras.ai/platform",
+        ),
+        MISTRAL(
+            "Mistral",
+            "https://api.mistral.ai/v1/chat/completions",
+            "mistral-small-latest",
+            "https://console.mistral.ai/api-keys",
+        ),
+        OPENROUTER(
+            "OpenRouter",
+            "https://openrouter.ai/api/v1/chat/completions",
+            "openai/gpt-oss-120b:free",
+            "https://openrouter.ai/keys",
+        ),
         CUSTOM("Custom (OpenAI-compatible)", "", "", ""),
     }
 
@@ -89,15 +109,32 @@ object TranslationHelper {
         val isUsable: Boolean get() = apiKey.isNotBlank() && model.isNotBlank() && baseUrl.startsWith("http")
     }
 
-    /** Cấu hình gắn sẵn trong app, nạp từ BuildConfig (xem app/build.gradle.kts). */
-    val defaultConfig: AiConfig by lazy {
+    /**
+     * Danh sách cấu hình gắn sẵn trong app, nạp từ BuildConfig (xem app/build.gradle.kts).
+     * Phần tử đầu là provider chính (AI_TRANSLATE_*), các phần tử sau là dự phòng
+     * (AI_TRANSLATE_FALLBACKS, dạng `PROVIDER=key` hoặc `PROVIDER=key|model`, ngăn cách bằng dấu phẩy).
+     * Khi provider đứng trước lỗi / hết hạn mức, app tự chuyển sang provider kế tiếp.
+     */
+    val defaultConfigs: List<AiConfig> by lazy {
         val provider = Provider.entries.firstOrNull { it.name.equals(BuildConfig.AI_TRANSLATE_PROVIDER, true) }
             ?.takeIf { it != Provider.CUSTOM } ?: Provider.GEMINI
-        AiConfig(
+        val primary = AiConfig(
             provider = provider,
             apiKey = BuildConfig.AI_TRANSLATE_KEY,
             model = BuildConfig.AI_TRANSLATE_MODEL.ifBlank { provider.defaultModel },
         )
+        val fallbacks = BuildConfig.AI_TRANSLATE_FALLBACKS.split(',', ';', '\n').mapNotNull { entry ->
+            val pair = entry.trim().split('=', limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+            val fallbackProvider = Provider.entries.firstOrNull { it.name.equals(pair[0].trim(), true) }
+                ?.takeIf { it != Provider.CUSTOM } ?: return@mapNotNull null
+            val parts = pair[1].split('|', limit = 2)
+            AiConfig(
+                provider = fallbackProvider,
+                apiKey = parts[0].trim(),
+                model = parts.getOrNull(1)?.trim().orEmpty().ifBlank { fallbackProvider.defaultModel },
+            )
+        }
+        (listOf(primary) + fallbacks).filter { it.isUsable }.ifEmpty { listOf(primary) }
     }
 
     data class LineResult(
@@ -169,11 +206,12 @@ object TranslationHelper {
         targetLang: String,
         wantTranslation: Boolean,
         wantRomanization: Boolean,
-        config: AiConfig,
+        configs: List<AiConfig>,
         onResult: (index: Int, result: LineResult) -> Unit,
     ) {
+        val usableConfigs = configs.filter { it.isUsable }
         val script = if (wantRomanization) detectScript(lines) else Script.OTHER
-        val cacheKey = "$songId|$targetLang|$wantTranslation|${script.name}|${config.model}"
+        val cacheKey = "$songId|$targetLang|$wantTranslation|${script.name}"
         cache.get(cacheKey)?.let { cached ->
             cached.forEachIndexed { index, result -> onResult(index, result) }
             return
@@ -193,7 +231,7 @@ object TranslationHelper {
             }
             val wantsRoman = needsRomanization(text, script)
             val offline = if (wantsRoman) Romanizer.romanize(text, korean = script == Script.KOREAN) else null
-            val needOnlineRoman = config.isUsable && wantsRoman && offline == null
+            val needOnlineRoman = usableConfigs.isNotEmpty() && wantsRoman && offline == null
             if (!wantTranslation && !needOnlineRoman) {
                 val result = LineResult(null, offline)
                 results[index] = result
@@ -211,7 +249,7 @@ object TranslationHelper {
                     val parsed = try {
                         translateChunkWithRetry(
                             chunk.map { Triple(it.index, it.text, it.needRoman) },
-                            targetLang, wantTranslation, script, config,
+                            targetLang, wantTranslation, script, usableConfigs,
                         )
                     } catch (e: AiTranslateException) {
                         failure = failure ?: e
@@ -246,13 +284,13 @@ object TranslationHelper {
         targetLang: String,
         wantTranslation: Boolean,
         script: Script,
-        config: AiConfig,
+        configs: List<AiConfig>,
     ): Map<Int, LineResult> {
         val merged = HashMap<Int, LineResult>()
         var remaining = chunk
         repeat(1 + MAX_FILL_PASSES) { pass ->
             val parsed = try {
-                translateChunkOnce(remaining, targetLang, wantTranslation, script, config)
+                translateChunkOnce(remaining, targetLang, wantTranslation, script, configs)
             } catch (e: AiTranslateException) {
                 // Lần đầu thất bại thì báo lỗi; các lần bù thất bại thì giữ phần đã có.
                 if (pass == 0) throw e else return merged
@@ -269,15 +307,67 @@ object TranslationHelper {
         return merged
     }
 
+    // Provider đang "nghỉ" (hết hạn mức / key sai / lỗi liên tục) -> bỏ qua đến mốc này (elapsedRealtime).
+    private val cooldownUntil = HashMap<String, Long>()
+
+    private fun configId(config: AiConfig) = "${config.provider.name}|${config.baseUrl}|${config.model}"
+
+    private fun isCoolingDown(config: AiConfig): Boolean = synchronized(cooldownUntil) {
+        (cooldownUntil[configId(config)] ?: 0L) > SystemClock.elapsedRealtime()
+    }
+
+    private fun coolDown(config: AiConfig, e: AiTranslateException) {
+        val message = e.message.orEmpty()
+        val millis = when {
+            // Key sai / không có quyền / model không tồn tại: đừng thử lại sớm.
+            e.code == 400 || e.code == 401 || e.code == 403 || e.code == 404 -> 30 * 60_000L
+            e.code == 429 && message.contains("per day", ignoreCase = true) -> 30 * 60_000L
+            e.code == 429 -> 60_000L
+            else -> 30_000L
+        }
+        synchronized(cooldownUntil) { cooldownUntil[configId(config)] = SystemClock.elapsedRealtime() + millis }
+    }
+
+    /**
+     * Thử lần lượt từng provider; provider nào lỗi (hết hạn mức, key sai, mạng...) thì chuyển sang provider kế.
+     * Ném lỗi của provider cuối cùng nếu tất cả đều thất bại.
+     */
     private suspend fun translateChunkOnce(
         chunk: List<Triple<Int, String, Boolean>>,
         targetLang: String,
         wantTranslation: Boolean,
         script: Script,
+        configs: List<AiConfig>,
+    ): Map<Int, LineResult> {
+        // Nếu tất cả đều đang nghỉ thì vẫn thử hết, tốt hơn là báo lỗi ngay.
+        val candidates = configs.filterNot { isCoolingDown(it) }.ifEmpty { configs }
+        var last: AiTranslateException? = null
+        candidates.forEachIndexed { position, config ->
+            val isLast = position == candidates.lastIndex
+            try {
+                // Còn provider dự phòng thì không cần retry lâu trên provider đang lỗi.
+                return translateChunkWithAttempts(
+                    chunk, targetLang, wantTranslation, script, config,
+                    attempts = if (isLast) MAX_ATTEMPTS else 1,
+                )
+            } catch (e: AiTranslateException) {
+                coolDown(config, e)
+                last = AiTranslateException("${config.provider.label}: ${e.message.orEmpty()}", e.code)
+            }
+        }
+        throw last ?: AiTranslateException("Translation failed")
+    }
+
+    private suspend fun translateChunkWithAttempts(
+        chunk: List<Triple<Int, String, Boolean>>,
+        targetLang: String,
+        wantTranslation: Boolean,
+        script: Script,
         config: AiConfig,
+        attempts: Int,
     ): Map<Int, LineResult> {
         var last: AiTranslateException? = null
-        repeat(MAX_ATTEMPTS) { attempt ->
+        repeat(attempts) { attempt ->
             try {
                 return requestPermits.withPermit {
                     translateChunk(chunk, targetLang, wantTranslation, script, config)
