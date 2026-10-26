@@ -41,6 +41,7 @@ import com.caohaidang.edward.music.ui.component.IconButton
 import com.caohaidang.edward.music.ui.component.PreferenceGroupTitle
 import com.caohaidang.edward.music.ui.component.SwitchPreference
 import com.caohaidang.edward.music.ui.utils.backToMain
+import com.caohaidang.edward.music.update.UpdateSettingsSection
 import com.caohaidang.edward.music.utils.rememberEnumPreference
 import com.caohaidang.edward.music.utils.rememberPreference
 
@@ -103,6 +104,8 @@ fun SettingsScreen(
             checked = flowingArtwork,
             onCheckedChange = onFlowingArtworkChange,
         )
+
+        UpdateSettingsSection()
 
         PreferenceGroupTitle(title = stringResource(R.string.about))
 

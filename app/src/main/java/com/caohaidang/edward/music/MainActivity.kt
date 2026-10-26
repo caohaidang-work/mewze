@@ -154,6 +154,7 @@ import com.caohaidang.edward.music.ui.theme.ColorSaver
 import com.caohaidang.edward.music.ui.theme.DefaultThemeColor
 import com.caohaidang.edward.music.ui.theme.InnerTuneTheme
 import com.caohaidang.edward.music.ui.theme.SongTheme
+import com.caohaidang.edward.music.update.AutoUpdatePrompt
 import com.caohaidang.edward.music.ui.theme.extractThemeColor
 import com.caohaidang.edward.music.ui.utils.appBarScrollBehavior
 import com.caohaidang.edward.music.ui.utils.backToMain
@@ -604,6 +605,8 @@ class MainActivity : ComponentActivity() {
                             state = LocalMenuState.current,
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
+
+                        AutoUpdatePrompt()
 
                         sharedSong?.let { song ->
                             playerConnection?.let { playerConnection ->
