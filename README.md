@@ -73,3 +73,15 @@ may stop working at any time. Use at your own risk.
 ## 📄 License
 
 [GNU General Public License v3.0](LICENSE). Mewze is not affiliated with Google, YouTube, or the InnerTune authors.
+
+## 🔄 Cập nhật trong ứng dụng
+
+Mewze kiểm tra bản mới từ [GitHub Releases](../../releases) (Cài đặt → Cập nhật, hoặc tự động khi mở app, tối đa 12 giờ/lần),
+tải APK, kiểm tra SHA-256 rồi mở trình cài đặt của Android.
+
+**Phát hành bản mới (maintainer):**
+1. Tăng `versionCode` / `versionName` trong `app/build.gradle.kts`.
+2. `git tag v<versionName> && git push origin v<versionName>`: workflow *Release APK* sẽ build, ký và tạo release.
+
+Cần các GitHub Secrets: `RELEASE_KEYSTORE_BASE64` (`base64 -w0 release.keystore`), `RELEASE_KEYSTORE_PASSWORD`,
+`RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`. **Luôn dùng cùng một keystore**, nếu đổi, người dùng phải gỡ app cài lại.

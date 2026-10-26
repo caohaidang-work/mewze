@@ -340,4 +340,25 @@
     <string name="share_copy_link">Sao chép đường liên kết</string>
     <string name="share_target_story">Tin</string>
     <string name="share_target_more">Thêm</string>
+
+    <!-- In-app update -->
+    <string name="update_title">Cập nhật</string>
+    <string name="update_check">Kiểm tra cập nhật</string>
+    <string name="update_check_current">Phiên bản hiện tại %1$s</string>
+    <string name="update_checking">Đang kiểm tra…</string>
+    <string name="update_up_to_date">Bạn đang dùng bản mới nhất</string>
+    <string name="update_check_failed">Không kiểm tra được. Thử lại sau nhé.</string>
+    <string name="update_auto_check">Tự động kiểm tra</string>
+    <string name="update_auto_check_desc">Tìm bản mới mỗi khi mở ứng dụng</string>
+    <string name="update_available_title">Có phiên bản mới</string>
+    <string name="update_version_line">%1$s → %2$s</string>
+    <string name="update_whats_new">Có gì mới</string>
+    <string name="update_download">Tải về</string>
+    <string name="update_retry">Thử lại</string>
+    <string name="update_downloading">Đang tải… %1$d%%</string>
+    <string name="update_download_failed">Tải thất bại. Kiểm tra kết nối rồi thử lại.</string>
+    <string name="update_install">Cài đặt</string>
+    <string name="update_later">Để sau</string>
+    <string name="update_cancel">Hủy</string>
+    <string name="update_allow_install">Cho phép Mewze cài ứng dụng, rồi bấm Cài đặt lại</string>
 </resources>

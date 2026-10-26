@@ -34,6 +34,15 @@ val aiTranslateProvider = secret("AI_TRANSLATE_PROVIDER")
 val aiTranslateModel = secret("AI_TRANSLATE_MODEL")
 val aiTranslateFallbacks = secret("AI_TRANSLATE_FALLBACKS")
 
+// Release signing (stable key, required so in-app updates can install over the previous version).
+// RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD
+// come from env or local.properties. If any is missing the release build stays unsigned.
+val releaseKeystoreFile = secret("RELEASE_KEYSTORE_FILE")
+val releaseKeystorePassword = secret("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = secret("RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseKeystoreFile, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword).all { it.isNotEmpty() }
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -61,8 +70,28 @@ android {
         buildConfigField("String", "AI_TRANSLATE_FALLBACKS", "\"$aiTranslateFallbacks\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+        getByName("debug") {
+            if (System.getenv("MUSIC_DEBUG_SIGNING_STORE_PASSWORD") != null) {
+                storeFile = file(System.getenv("MUSIC_DEBUG_KEYSTORE_FILE"))
+                storePassword = System.getenv("MUSIC_DEBUG_SIGNING_STORE_PASSWORD")
+                keyAlias = "debug"
+                keyPassword = System.getenv("MUSIC_DEBUG_SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             isCrunchPngs = false
@@ -73,16 +102,6 @@ android {
         }
     }
 
-    signingConfigs {
-        getByName("debug") {
-            if (System.getenv("MUSIC_DEBUG_SIGNING_STORE_PASSWORD") != null) {
-                storeFile = file(System.getenv("MUSIC_DEBUG_KEYSTORE_FILE"))
-                storePassword = System.getenv("MUSIC_DEBUG_SIGNING_STORE_PASSWORD")
-                keyAlias = "debug"
-                keyPassword = System.getenv("MUSIC_DEBUG_SIGNING_KEY_PASSWORD")
-            }
-        }
-    }
     buildFeatures {
         buildConfig = true
         compose = true

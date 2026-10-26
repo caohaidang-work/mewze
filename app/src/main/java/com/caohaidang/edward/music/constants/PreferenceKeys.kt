@@ -3,6 +3,7 @@ package com.caohaidang.edward.music.constants
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
@@ -359,3 +360,6 @@ val CountryCodeToName = mapOf(
     "YE" to "Yemen",
     "ZW" to "Zimbabwe",
 )
+
+val AutoCheckUpdateKey = booleanPreferencesKey("autoCheckUpdate")
+val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
