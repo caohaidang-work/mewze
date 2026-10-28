@@ -191,6 +191,45 @@ interface DatabaseDao {
     )
     fun recentlyPlayedSongs(limit: Int = 20): Flow<List<Song>>
 
+    /** Albums of the songs played most recently, newest first. */
+    @Transaction
+    @Query(
+        """
+        SELECT album.*
+        FROM album
+                 JOIN (SELECT song.albumId AS aid, MAX(event.id) AS lastEvent
+                       FROM event
+                                JOIN song ON song.id = event.songId
+                       WHERE song.albumId IS NOT NULL
+                       GROUP BY song.albumId) r ON r.aid = album.id
+        ORDER BY r.lastEvent DESC
+        LIMIT :limit
+        """
+    )
+    fun recentlyPlayedAlbums(limit: Int = 10): Flow<List<Album>>
+
+    /**
+     * Playlists the user has been listening to: at least two different songs of the playlist
+     * were played, ordered by the most recent play.
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT playlist.*,
+               (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount
+        FROM playlist
+                 JOIN (SELECT psm.playlistId AS pid, MAX(event.id) AS lastEvent
+                       FROM playlist_song_map psm
+                                JOIN event ON event.songId = psm.songId
+                       GROUP BY psm.playlistId
+                       HAVING COUNT(DISTINCT event.songId) >= 2) r ON r.pid = playlist.id
+        WHERE playlist.id NOT IN ('LP_LIKED', 'LP_DOWNLOADED')
+        ORDER BY r.lastEvent DESC
+        LIMIT :limit
+        """
+    )
+    fun recentlyPlayedPlaylists(limit: Int = 10): Flow<List<Playlist>>
+
     @Transaction
     @Query(
         """

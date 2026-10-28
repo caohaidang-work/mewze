@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,11 +16,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -39,6 +46,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -61,8 +69,14 @@ import com.caohaidang.edward.music.db.entities.Song
 import com.caohaidang.edward.music.extensions.togglePlayPause
 import com.caohaidang.edward.music.models.SimilarRecommendation
 import com.caohaidang.edward.music.models.toMediaMetadata
+import com.caohaidang.edward.music.playback.queues.YouTubeAlbumRadio
 import com.caohaidang.edward.music.playback.queues.YouTubeQueue
 import com.caohaidang.edward.music.ui.component.GlassSectionHeader
+import com.caohaidang.edward.music.ui.component.HomeChartRow
+import com.caohaidang.edward.music.ui.component.HomeCover
+import com.caohaidang.edward.music.ui.component.HomeExpandButton
+import com.caohaidang.edward.music.ui.component.HomeHeroPager
+import com.caohaidang.edward.music.ui.component.HomeSectionTitle
 import com.caohaidang.edward.music.ui.component.NewReleasePager
 import com.caohaidang.edward.music.ui.component.GlassChip
 import com.caohaidang.edward.music.ui.component.GlassSquareCard
@@ -74,16 +88,20 @@ import com.caohaidang.edward.music.ui.component.shimmer.GridItemPlaceHolder
 import com.caohaidang.edward.music.ui.component.shimmer.ShimmerHost
 import com.caohaidang.edward.music.ui.component.shimmer.TextPlaceholder
 import com.caohaidang.edward.music.ui.menu.AlbumMenu
+import com.caohaidang.edward.music.ui.menu.PlaylistMenu
 import com.caohaidang.edward.music.ui.menu.SongMenu
 import com.caohaidang.edward.music.ui.menu.YouTubeAlbumMenu
 import com.caohaidang.edward.music.ui.menu.YouTubeArtistMenu
 import com.caohaidang.edward.music.ui.menu.YouTubePlaylistMenu
 import com.caohaidang.edward.music.ui.menu.YouTubeSongMenu
+import com.caohaidang.edward.music.viewmodels.HeroTarget
 import com.caohaidang.edward.music.viewmodels.HomeViewModel
 import java.util.Calendar
+import java.util.Locale
 import kotlin.math.min
 
-private const val RECENT_TILE_COUNT = 6
+private const val RECENT_TILE_COUNT = 12
+private const val CHART_PREVIEW_COUNT = 5
 private const val MAX_RECOMMEND_BLOCKS = 10
 
 private data class HomeTile(
@@ -231,6 +249,39 @@ private fun buildBlocks(
     return out
 }
 
+private fun LazyListScope.chartSection(
+    keyPrefix: String,
+    title: String,
+    songs: List<SongItem>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    isActive: (SongItem) -> Boolean,
+    onPlay: (SongItem) -> Unit,
+    onMenu: (SongItem) -> Unit,
+) {
+    if (songs.isEmpty()) return
+    item(key = "h_$keyPrefix") {
+        HomeSectionTitle(title = title, modifier = Modifier.padding(top = 10.dp))
+    }
+    val shown = if (expanded) songs else songs.take(CHART_PREVIEW_COUNT)
+    itemsIndexed(shown, key = { _, song -> "${keyPrefix}_${song.id}" }) { index, song ->
+        HomeChartRow(
+            rank = index + 1,
+            title = song.title,
+            subtitle = song.artists.joinToString { it.name }.ifEmpty { null },
+            thumbnailUrl = song.thumbnail,
+            isActive = isActive(song),
+            onClick = { onPlay(song) },
+            onLongClick = { onMenu(song) },
+        )
+    }
+    if (songs.size > CHART_PREVIEW_COUNT) {
+        item(key = "t_$keyPrefix") {
+            HomeExpandButton(expanded = expanded, onClick = onToggle)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -252,6 +303,12 @@ fun HomeScreen(
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
     val newForYou by viewModel.newForYou.collectAsState()
+    val heroSlides by viewModel.heroSlides.collectAsState()
+    val countryChart by viewModel.countryChart.collectAsState()
+    val globalChart by viewModel.globalChart.collectAsState()
+
+    var countryChartExpanded by rememberSaveable { mutableStateOf(false) }
+    var globalChartExpanded by rememberSaveable { mutableStateOf(false) }
 
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -304,6 +361,16 @@ fun HomeScreen(
             )
         }
     }
+    val showPlaylistMenu: (Playlist) -> Unit = { playlist ->
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        menuState.show {
+            PlaylistMenu(
+                playlist = playlist,
+                coroutineScope = scope,
+                onDismiss = menuState::dismiss
+            )
+        }
+    }
     val onYtClick: (YTItem) -> Unit = { item ->
         when (item) {
             is SongItem -> playerConnection.playQueue(
@@ -345,52 +412,53 @@ fun HomeScreen(
         }
     }
 
-    val recentTiles: List<HomeTile> = run {
-        val local = recentItems.orEmpty().mapNotNull { item ->
-            when (item) {
-                is Song -> HomeTile(
-                    key = "song_${item.id}",
-                    title = item.title,
-                    subtitle = item.artists.joinToString { it.name }.ifEmpty { null },
-                    thumbnail = item.thumbnailUrl,
-                    isActive = item.id == mediaMetadata?.id,
-                    onClick = { playSong(item) },
-                    onLongClick = { showSongMenu(item) }
-                )
+    val recentTiles: List<HomeTile> = recentItems.orEmpty().mapNotNull { item ->
+        when (item) {
+            is Song -> HomeTile(
+                key = "song_${item.id}",
+                title = item.title,
+                subtitle = item.artists.joinToString { it.name }.ifEmpty { null },
+                thumbnail = item.thumbnailUrl,
+                isActive = item.id == mediaMetadata?.id,
+                onClick = { playSong(item) },
+                onLongClick = { showSongMenu(item) }
+            )
 
-                is Album -> HomeTile(
-                    key = "album_${item.id}",
-                    title = item.title,
-                    subtitle = "Album",
-                    thumbnail = item.thumbnailUrl,
-                    isActive = item.id == mediaMetadata?.album?.id,
-                    onClick = { navController.navigate("album/${item.id}") },
-                    onLongClick = { showAlbumMenu(item) }
-                )
+            is Album -> HomeTile(
+                key = "album_${item.id}",
+                title = item.title,
+                subtitle = "Album",
+                thumbnail = item.thumbnailUrl,
+                isActive = item.id == mediaMetadata?.album?.id,
+                onClick = { navController.navigate("album/${item.id}") },
+                onLongClick = { showAlbumMenu(item) }
+            )
 
-                else -> null
-            }
+            is Playlist -> HomeTile(
+                key = "playlist_${item.id}",
+                title = item.title,
+                subtitle = "Playlist",
+                thumbnail = item.displayThumbnails.firstOrNull(),
+                isActive = false,
+                onClick = { navController.navigate("local_playlist/${item.id}") },
+                onLongClick = { showPlaylistMenu(item) }
+            )
+
+            else -> null
         }
-        if (local.size >= RECENT_TILE_COUNT) {
-            local.take(RECENT_TILE_COUNT)
-        } else {
-            val pool: List<YTItem> = accountPlaylists.orEmpty() +
-                    homePage?.sections.orEmpty().flatMap { it.items }
-            val fallback = pool
-                .filter { it !is ArtistItem && it.id != "LM" }
-                .map { item ->
-                    HomeTile(
-                        key = "yt_${item.id}",
-                        title = item.title,
-                        subtitle = item.subtitleText(),
-                        thumbnail = item.thumbnail,
-                        isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
-                        onClick = { onYtClick(item) },
-                        onLongClick = { onYtLongClick(item) }
-                    )
-                }
-            (local + fallback).distinctBy { it.key }.take(RECENT_TILE_COUNT)
+    }.distinctBy { it.key }.take(RECENT_TILE_COUNT)
+
+    val onHeroPlay: (com.caohaidang.edward.music.viewmodels.HeroSlide) -> Unit = { slide ->
+        when (val target = slide.target) {
+            is HeroTarget.LocalSong -> playSong(target.song)
+            is HeroTarget.OnlineSong -> onYtClick(target.item)
+            is HeroTarget.OnlineAlbum -> playerConnection.playQueue(YouTubeAlbumRadio(target.item.playlistId))
+            is HeroTarget.ArtistPage -> navController.navigate("artist/${target.artistId}")
         }
+    }
+
+    val countryName = remember(countryChart?.country) {
+        countryChart?.country?.let { Locale("", it).getDisplayCountry(Locale("vi")) }.orEmpty()
     }
 
     val blocks = remember(
@@ -419,50 +487,89 @@ fun HomeScreen(
         LazyColumn(
             state = lazylistState,
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+            contentPadding = PaddingValues(
+                bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+            )
         ) {
-            item(key = "greeting") {
-                Text(
-                    text = greeting,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)
-                        .animateItem()
-                )
+            if (heroSlides.isNotEmpty()) {
+                item(key = "hero") {
+                    HomeHeroPager(
+                        slides = heroSlides,
+                        onPlay = onHeroPlay,
+                        modifier = Modifier.animateItem()
+                    )
+                }
+            } else {
+                // Nothing to suggest yet (loading / offline): keep the page clear of the status bar.
+                item(key = "greeting") {
+                    Text(
+                        text = greeting,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-1).sp,
+                        modifier = Modifier
+                            .padding(
+                                start = 24.dp,
+                                end = 24.dp,
+                                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp,
+                                bottom = 8.dp
+                            )
+                            .animateItem()
+                    )
+                }
             }
 
             if (recentTiles.isNotEmpty()) {
-                item(key = "recent_tiles") {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .animateItem()
+                item(key = "h_recent") {
+                    HomeSectionTitle(
+                        title = "Gần đây phát",
+                        onClick = { navController.navigate("history") },
+                        modifier = Modifier.animateItem()
+                    )
+                }
+                item(key = "row_recent") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.animateItem()
                     ) {
-                        recentTiles.chunked(2).forEach { pair ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                pair.forEach { tile ->
-                                    GlassTile(
-                                        title = tile.title,
-                                        subtitle = tile.subtitle,
-                                        thumbnailUrl = tile.thumbnail,
-                                        isActive = tile.isActive,
-                                        onClick = tile.onClick,
-                                        onLongClick = tile.onLongClick,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (pair.size == 1) {
-                                    Spacer(Modifier.weight(1f))
-                                }
-                            }
+                        items(recentTiles, key = { it.key }) { tile ->
+                            HomeCover(
+                                title = tile.title,
+                                subtitle = tile.subtitle,
+                                thumbnailUrl = tile.thumbnail,
+                                isActive = tile.isActive,
+                                onClick = tile.onClick,
+                                onLongClick = tile.onLongClick,
+                            )
                         }
                     }
                 }
+            }
+
+            countryChart?.let { chart ->
+                chartSection(
+                    keyPrefix = "chart_country",
+                    title = if (countryName.isNotEmpty()) "Thịnh hành tại $countryName" else "Thịnh hành trong nước",
+                    songs = chart.songs,
+                    expanded = countryChartExpanded,
+                    onToggle = { countryChartExpanded = !countryChartExpanded },
+                    isActive = { it.id == mediaMetadata?.id },
+                    onPlay = { onYtClick(it) },
+                    onMenu = { onYtLongClick(it) },
+                )
+            }
+            globalChart?.let { chart ->
+                chartSection(
+                    keyPrefix = "chart_global",
+                    title = "Thịnh hành quốc tế",
+                    songs = chart.songs,
+                    expanded = globalChartExpanded,
+                    onToggle = { globalChartExpanded = !globalChartExpanded },
+                    isActive = { it.id == mediaMetadata?.id },
+                    onPlay = { onYtClick(it) },
+                    onMenu = { onYtLongClick(it) },
+                )
             }
 
             blocks.forEach { block ->

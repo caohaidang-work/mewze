@@ -40,6 +40,7 @@ import com.caohaidang.edward.innertube.pages.ArtistItemsContinuationPage
 import com.caohaidang.edward.innertube.pages.ArtistItemsPage
 import com.caohaidang.edward.innertube.pages.ArtistPage
 import com.caohaidang.edward.innertube.pages.BrowseResult
+import com.caohaidang.edward.innertube.pages.ChartsPage
 import com.caohaidang.edward.innertube.pages.ExplorePage
 import com.caohaidang.edward.innertube.pages.HomePage
 import com.caohaidang.edward.innertube.pages.MoodAndGenres
@@ -616,6 +617,21 @@ object YouTube {
                 it.musicCarouselShelfRenderer?.header?.musicCarouselShelfBasicHeaderRenderer?.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint?.browseId == "FEmusic_moods_and_genres"
             }?.musicCarouselShelfRenderer?.contents?.mapNotNull { it.musicNavigationButtonRenderer }?.mapNotNull(MoodAndGenres.Companion::fromMusicNavigationButtonRenderer).orEmpty()
         )
+    }
+
+    /**
+     * Top songs chart. [country] is an ISO country code, or [ChartsPage.GLOBAL] for the worldwide chart.
+     */
+    suspend fun charts(country: String): Result<ChartsPage> = runCatching {
+        val response = innerTube.browse(
+            WEB_REMIX,
+            browseId = "FEmusic_charts",
+            selectedValues = listOf(country),
+        ).body<BrowseResponse>()
+        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+        ChartsPage.fromSections(country, sections)
+            ?: throw IllegalStateException("YouTube không trả về bảng xếp hạng cho $country")
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {
