@@ -20,25 +20,35 @@ data class ChartsPage(
     companion object {
         const val GLOBAL = "ZZ"
 
-        /** Section titles (several languages) of the "trending" shelf on the explore page. */
-        val TRENDING_TITLES = listOf("trending", "thịnh hành", "xu hướng", "đang hot")
+        /** Titles (several languages) of the "Top songs" shelf of the YouTube Music charts page. */
+        val TOP_SONGS_TITLES = listOf("top songs", "top tracks", "bài hát hàng đầu", "bài hát được nghe nhiều")
+
+        /**
+         * Shelves of the charts page that are not the song chart: video charts, artists, trending, ...
+         * They are never used, even when nothing else can be read, so the Home screen shows nothing rather
+         * than a list of trending videos.
+         */
+        private val NOT_SONG_TITLES = listOf(
+            "video", "artist", "nghệ sĩ", "trending", "thịnh hành", "xu hướng", "đang hot", "mới", "new",
+        )
 
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
         /**
-         * Reads the first track list found in a charts (or explore) response.
+         * Reads the "Top songs" chart from a `FEmusic_charts` response.
          *
-         * The page layout differs between regions and changes over time (video cards, ranked rows, ...), so
-         * this works on the raw JSON and only looks for items that carry a video id instead of relying on
-         * typed models. Items that cannot be read are skipped.
-         *
-         * @param onlyTitles when set, only sections whose title contains one of these words (any case) count.
+         * The page layout differs between regions and changes over time, so this works on the raw JSON and
+         * only looks for items that carry a video id instead of relying on typed models. Items that cannot
+         * be read are skipped. Shelves are picked in this order:
+         *  1. a shelf titled like "Top songs" (ranked rows, or cards when it has no rows);
+         *  2. otherwise the first shelf made of ranked rows whose title is not a video / artist / trending one.
+         * Video cards from any other shelf are ignored, so this returns null instead of a video list.
          */
-        fun fromJson(country: String, body: String, onlyTitles: List<String>? = null): ChartsPage? {
+        fun fromJson(country: String, body: String): ChartsPage? {
             val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return null
             val sections = findKey(root, "sectionListRenderer")?.obj()?.get("contents") as? JsonArray ?: return null
 
-            class Candidate(val title: String, val songs: List<SongItem>)
+            class Candidate(val title: String, val rows: List<SongItem>, val cards: List<SongItem>)
 
             val candidates = sections.mapNotNull { section ->
                 val sectionObj = section.obj() ?: return@mapNotNull null
@@ -46,20 +56,22 @@ data class ChartsPage(
                     ?: sectionObj["musicImmersiveCarouselShelfRenderer"]?.obj()
                     ?: sectionObj["musicShelfRenderer"]?.obj()
                     ?: return@mapNotNull null
-                val title = shelfTitle(shelf)
-                if (onlyTitles != null && onlyTitles.none { title.contains(it, ignoreCase = true) }) {
-                    return@mapNotNull null
-                }
-                val items = (shelf["contents"] as? JsonArray).orEmpty().mapNotNull { content ->
-                    val c = content.obj() ?: return@mapNotNull null
-                    c["musicResponsiveListItemRenderer"]?.obj()?.let { rowSong(it) }
-                        ?: c["musicTwoRowItemRenderer"]?.obj()?.let { cardSong(it) }
-                }
-                Candidate(title, items)
-            }.filter { it.songs.size >= 3 }
+                val contents = (shelf["contents"] as? JsonArray).orEmpty().mapNotNull { it.obj() }
+                Candidate(
+                    title = shelfTitle(shelf),
+                    rows = contents.mapNotNull { c -> c["musicResponsiveListItemRenderer"]?.obj()?.let { rowSong(it) } },
+                    cards = contents.mapNotNull { c -> c["musicTwoRowItemRenderer"]?.obj()?.let { cardSong(it) } },
+                )
+            }
 
-            val best = candidates.firstOrNull() ?: return null
-            return ChartsPage(country, best.songs.distinctBy { it.id })
+            fun Candidate.matches(words: List<String>) = words.any { title.contains(it, ignoreCase = true) }
+
+            val songs = candidates.firstOrNull { it.matches(TOP_SONGS_TITLES) && maxOf(it.rows.size, it.cards.size) >= 3 }
+                ?.let { if (it.rows.size >= 3) it.rows else it.cards }
+                ?: candidates.firstOrNull { it.rows.size >= 3 && !it.matches(NOT_SONG_TITLES) }?.rows
+                ?: return null
+
+            return ChartsPage(country, songs.distinctBy { it.id })
         }
 
         private fun shelfTitle(shelf: JsonObject): String {
