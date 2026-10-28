@@ -48,10 +48,17 @@ if (aiTranslateKey.isEmpty()) {
 // Release signing (stable key, required so in-app updates can install over the previous version).
 // RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD
 // come from env or local.properties. If any is missing the release build stays unsigned.
-val releaseKeystoreFile = secret("RELEASE_KEYSTORE_FILE")
-val releaseKeystorePassword = secret("RELEASE_KEYSTORE_PASSWORD")
-val releaseKeyAlias = secret("RELEASE_KEY_ALIAS")
-val releaseKeyPassword = secret("RELEASE_KEY_PASSWORD")
+// Local fallback: <repo>/keystore.properties (git-ignored, see keystore.properties.example and SIGNING.md)
+// with storeFile / storePassword / keyAlias / keyPassword. Env vars and local.properties win over it.
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+fun signingValue(name: String, fileKey: String): String =
+    secret(name).ifEmpty { keystoreProps.getProperty(fileKey, "").trim() }
+val releaseKeystoreFile = signingValue("RELEASE_KEYSTORE_FILE", "storeFile")
+val releaseKeystorePassword = signingValue("RELEASE_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("RELEASE_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("RELEASE_KEY_PASSWORD", "keyPassword")
 val hasReleaseSigning = listOf(releaseKeystoreFile, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword).all { it.isNotEmpty() }
 
 plugins {
@@ -72,8 +79,8 @@ android {
         applicationId = "com.caohaidang.edward.music"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "2.1.4"
+        versionCode = 8
+        versionName = "2.2.0"
         buildConfigField("String", "SPOTIFY_CLIENT_ID", spotifyClientId.asJavaLiteral())
         buildConfigField("String", "AI_TRANSLATE_KEY", aiTranslateKey.asJavaLiteral())
         buildConfigField("String", "AI_TRANSLATE_PROVIDER", aiTranslateProvider.asJavaLiteral())
@@ -142,6 +149,10 @@ android {
     lint {
         lintConfig = file("app/lint.xml")
     }
+    sourceSets {
+        // Room's exported schemas, so MigrationTestHelper can find them in unit tests (Robolectric).
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 ksp {
@@ -186,6 +197,14 @@ dependencies {
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
     implementation(libs.room.ktx)
+
+    // Unit tests (JVM): ./gradlew testDebugUnitTest
+    testImplementation(libs.junit)
+    testImplementation(kotlin("test"))
+    testImplementation("androidx.room:room-testing:${libs.versions.room.get()}")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
 
     implementation(libs.apache.lang3)
 
