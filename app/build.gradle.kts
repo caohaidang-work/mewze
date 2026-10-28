@@ -21,18 +21,29 @@ val spotifyClientId: String = (
 //   AI_TRANSLATE_FALLBACKS optional backup providers, tried in order when the primary fails or hits its
 //                          rate limit. Comma-separated PROVIDER=key or PROVIDER=key|model, e.g.
 //                          GROQ=gsk_xxx,CEREBRAS=csk_xxx,MISTRAL=xxx|mistral-small-latest
+// Tolerates a BOM, stray spaces and values wrapped in quotes (AI_TRANSLATE_KEY="abc" would otherwise
+// send the quotes as part of the key and every request would be rejected).
 fun secret(name: String): String = (
     providers.gradleProperty(name).orNull
         ?: System.getenv(name)
         ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
-            Properties().apply { f.inputStream().use(::load) }.getProperty(name)
+            Properties().apply { f.reader(Charsets.UTF_8).use(::load) }.getProperty(name)
         }
         ?: ""
-).trim()
+).trim().removePrefix("\uFEFF").trim().removeSurrounding("\"").removeSurrounding("'").trim()
+
+// Makes a value safe to place inside a quoted BuildConfig string.
+fun String.asJavaLiteral(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 val aiTranslateKey = secret("AI_TRANSLATE_KEY")
 val aiTranslateProvider = secret("AI_TRANSLATE_PROVIDER")
 val aiTranslateModel = secret("AI_TRANSLATE_MODEL")
 val aiTranslateFallbacks = secret("AI_TRANSLATE_FALLBACKS")
+if (aiTranslateKey.isEmpty()) {
+    logger.warn(
+        "AI_TRANSLATE_KEY is empty: lyrics translation will be disabled. Add AI_TRANSLATE_KEY=<key> to " +
+            "${rootProject.file("local.properties").absolutePath} (no quotes), then rebuild."
+    )
+}
 
 // Release signing (stable key, required so in-app updates can install over the previous version).
 // RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD
@@ -63,11 +74,11 @@ android {
         targetSdk = 35
         versionCode = 7
         versionName = "2.1.4"
-        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"$spotifyClientId\"")
-        buildConfigField("String", "AI_TRANSLATE_KEY", "\"$aiTranslateKey\"")
-        buildConfigField("String", "AI_TRANSLATE_PROVIDER", "\"$aiTranslateProvider\"")
-        buildConfigField("String", "AI_TRANSLATE_MODEL", "\"$aiTranslateModel\"")
-        buildConfigField("String", "AI_TRANSLATE_FALLBACKS", "\"$aiTranslateFallbacks\"")
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", spotifyClientId.asJavaLiteral())
+        buildConfigField("String", "AI_TRANSLATE_KEY", aiTranslateKey.asJavaLiteral())
+        buildConfigField("String", "AI_TRANSLATE_PROVIDER", aiTranslateProvider.asJavaLiteral())
+        buildConfigField("String", "AI_TRANSLATE_MODEL", aiTranslateModel.asJavaLiteral())
+        buildConfigField("String", "AI_TRANSLATE_FALLBACKS", aiTranslateFallbacks.asJavaLiteral())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

@@ -305,7 +305,14 @@ class HomeViewModel @Inject constructor(
         val country = YouTube.locale.gl
 
         suspend fun fetch(code: String): ChartsPage? =
-            YouTube.charts(code).onFailure { reportException(it) }.getOrNull()?.let { page ->
+            YouTube.charts(code)
+                .recoverCatching { error ->
+                    // Charts page unreadable for this country: try the explore page's "Trending" shelf.
+                    if (code == ChartsPage.GLOBAL) throw error
+                    YouTube.trending(code).getOrElse { throw error }
+                }
+                .onFailure { reportException(it) }
+                .getOrNull()?.let { page ->
                 page.copy(songs = page.songs.filterExplicit(hideExplicit).take(CHART_LIMIT))
                     .takeIf { it.songs.isNotEmpty() }
             }

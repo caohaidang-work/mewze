@@ -620,18 +620,27 @@ object YouTube {
     }
 
     /**
-     * Top songs chart. [country] is an ISO country code, or [ChartsPage.GLOBAL] for the worldwide chart.
+     * Top tracks chart. [country] is an ISO country code, or [ChartsPage.GLOBAL] for the worldwide chart.
+     * The response is read as raw JSON because the layout differs by region and changes often.
      */
     suspend fun charts(country: String): Result<ChartsPage> = runCatching {
-        val response = innerTube.browse(
+        val body = innerTube.browse(
             WEB_REMIX,
             browseId = "FEmusic_charts",
             selectedValues = listOf(country),
-        ).body<BrowseResponse>()
-        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
-        ChartsPage.fromSections(country, sections)
+        ).bodyAsText()
+        ChartsPage.fromJson(country, body)
             ?: throw IllegalStateException("YouTube không trả về bảng xếp hạng cho $country")
+    }
+
+    /**
+     * The "Trending" shelf of the explore page (for the app's country): used when the charts page has
+     * nothing readable for a country.
+     */
+    suspend fun trending(country: String): Result<ChartsPage> = runCatching {
+        val body = innerTube.browse(WEB_REMIX, browseId = "FEmusic_explore").bodyAsText()
+        ChartsPage.fromJson(country, body, onlyTitles = ChartsPage.TRENDING_TITLES)
+            ?: throw IllegalStateException("YouTube không trả về mục thịnh hành")
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {

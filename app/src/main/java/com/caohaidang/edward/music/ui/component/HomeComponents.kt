@@ -137,7 +137,7 @@ private fun HeroPage(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(6.dp)
+                .blur(1.5.dp)
         )
         // Darkens the top (status bar icons) and the bottom (text) while keeping the middle of the cover clear.
         Box(
@@ -145,10 +145,10 @@ private fun HeroPage(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.40f),
+                        0f to Color.Black.copy(alpha = 0.30f),
                         0.28f to Color.Transparent,
-                        0.50f to Color.Black.copy(alpha = 0.10f),
-                        1f to Color.Black.copy(alpha = 0.88f),
+                        0.50f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.80f),
                     )
                 )
         )
