@@ -23,7 +23,7 @@ Kotlin · Jetpack Compose · Material 3 · Media3
 
 | | |
 |---|---|
-| 🏠 **Glass-style home** | YouTube Music-style suggestions and a new-releases section based on your listening habits |
+| 🏠 **Home** | Full-bleed suggestion carousel (maybe you know, new release, long time no hear, most played, favourite artist, liked song, trending), recently played songs / albums / playlists, country and worldwide top charts, then more suggestions |
 | 🔄 **YouTube Music sync** | Liked songs, playlists, albums and artists sync automatically after you sign in |
 | 📓 **Wrapped** | Weekly / monthly / yearly recap in a school-notebook style, shareable to stories |
 | 🎶 **Personal mix & autoplay** | Queues generated from your listening history |

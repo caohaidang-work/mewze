@@ -159,13 +159,15 @@ class InnerTube {
         params: String? = null,
         continuation: String? = null,
         setLogin: Boolean = false,
+        selectedValues: List<String>? = null,
     ) = httpClient.post("browse") {
         ytClient(client, setLogin = setLogin || useLoginForBrowse)
         setBody(
             BrowseBody(
                 context = client.toContext(locale, visitorData),
                 browseId = browseId,
-                params = params
+                params = params,
+                formData = selectedValues?.let { BrowseBody.FormData(it) }
             )
         )
         parameter("continuation", continuation)

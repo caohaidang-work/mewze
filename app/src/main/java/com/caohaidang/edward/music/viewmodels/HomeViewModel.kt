@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.caohaidang.edward.innertube.YouTube
 import com.caohaidang.edward.innertube.models.ArtistItem
 import com.caohaidang.edward.innertube.models.PlaylistItem
+import com.caohaidang.edward.innertube.models.SongItem
 import com.caohaidang.edward.innertube.models.WatchEndpoint
 import com.caohaidang.edward.innertube.models.YTItem
 import com.caohaidang.edward.innertube.models.filterExplicit
+import com.caohaidang.edward.innertube.pages.ChartsPage
 import com.caohaidang.edward.innertube.pages.ExplorePage
 import com.caohaidang.edward.innertube.pages.HomePage
 import com.caohaidang.edward.music.constants.HideExplicitKey
@@ -16,6 +18,7 @@ import com.caohaidang.edward.music.db.MusicDatabase
 import com.caohaidang.edward.music.db.entities.Album
 import com.caohaidang.edward.music.db.entities.Artist
 import com.caohaidang.edward.music.db.entities.LocalItem
+import com.caohaidang.edward.music.db.entities.Playlist
 import com.caohaidang.edward.music.db.entities.Song
 import com.caohaidang.edward.music.models.SimilarRecommendation
 import com.caohaidang.edward.music.utils.dataStore
@@ -30,9 +33,32 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** What a hero slide opens or plays when its button is pressed. */
+sealed interface HeroTarget {
+    data class LocalSong(val song: Song) : HeroTarget
+    data class OnlineSong(val item: SongItem) : HeroTarget
+    data class OnlineAlbum(val item: AlbumItem) : HeroTarget
+    data class ArtistPage(val artistId: String) : HeroTarget
+}
+
+/** One page of the big carousel at the top of Home. */
+data class HeroSlide(
+    val key: String,
+    /** Small line above the title, e.g. "Mới ra mắt". */
+    val label: String,
+    val title: String,
+    val thumbnail: String?,
+    val target: HeroTarget,
+)
+
+private const val HERO_PAGES = 7
+private const val RECENT_LIMIT = 12
+private const val CHART_LIMIT = 50
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -53,6 +79,17 @@ class HomeViewModel @Inject constructor(
     val explorePage = MutableStateFlow<ExplorePage?>(null)
 
     val newForYou = MutableStateFlow<List<AlbumItem>?>(null)
+
+    val heroSlides = MutableStateFlow<List<HeroSlide>>(emptyList())
+
+    /** Top songs of the country the app is set to, and worldwide. */
+    val countryChart = MutableStateFlow<ChartsPage?>(null)
+    val globalChart = MutableStateFlow<ChartsPage?>(null)
+
+    // Candidates for the hero carousel, filled by load().
+    @Volatile private var heroMostPlayed: List<Song> = emptyList()
+    @Volatile private var heroLiked: List<Song> = emptyList()
+    @Volatile private var heroArtists: List<Artist> = emptyList()
 
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
     val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
@@ -76,6 +113,15 @@ class HomeViewModel @Inject constructor(
         val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp)
             .first().filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }.shuffled().take(5)
         keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+
+        heroMostPlayed = database.mostPlayedSongs(System.currentTimeMillis() - 86400000L * 30, limit = 8)
+            .first().shuffled()
+        heroLiked = database.likedSongsByCreateDateAsc().first().shuffled()
+        heroArtists = (database.artistsBookmarkedByCreateDateAsc().first() +
+                database.mostPlayedArtists(fromTimeStamp, limit = 8).first())
+            .filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }
+            .distinctBy { it.id }
+            .shuffled()
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album }
@@ -163,7 +209,114 @@ class HomeViewModel @Inject constructor(
                 explorePage.value?.newReleaseAlbums.orEmpty() +
                 newForYou.value.orEmpty()
 
+        updateHero()
         isLoading.value = false
+    }
+
+    private fun songTitle(title: String, artists: List<String>): String =
+        if (artists.isEmpty()) title else "$title - ${artists.joinToString()}"
+
+    /**
+     * Builds the hero carousel: one slide per kind of suggestion (maybe-you-know, new release, long
+     * time no hear, most played, favourite artist, liked song, trending), skipping the kinds there is
+     * nothing for, then topped up with more suggestions up to [HERO_PAGES] pages.
+     */
+    private fun updateHero() {
+        val used = HashSet<String>()
+        val slides = ArrayList<HeroSlide>()
+
+        fun addSong(label: String, song: Song?) {
+            if (song == null || slides.size >= HERO_PAGES || !used.add(song.id)) return
+            slides += HeroSlide(
+                key = "song_${song.id}_$label",
+                label = label,
+                title = songTitle(song.title, song.artists.map { it.name }),
+                thumbnail = song.thumbnailUrl,
+                target = HeroTarget.LocalSong(song),
+            )
+        }
+
+        fun addOnline(label: String, item: YTItem?) {
+            if (item == null || slides.size >= HERO_PAGES || !used.add(item.id)) return
+            when (item) {
+                is SongItem -> slides += HeroSlide(
+                    key = "yt_${item.id}_$label",
+                    label = label,
+                    title = songTitle(item.title, item.artists.map { it.name }),
+                    thumbnail = item.thumbnail,
+                    target = HeroTarget.OnlineSong(item),
+                )
+
+                is AlbumItem -> slides += HeroSlide(
+                    key = "yt_${item.id}_$label",
+                    label = label,
+                    title = songTitle(item.title, item.artists.orEmpty().map { it.name }),
+                    thumbnail = item.thumbnail,
+                    target = HeroTarget.OnlineAlbum(item),
+                )
+
+                else -> used.remove(item.id)
+            }
+        }
+
+        fun List<YTItem>.songsAndAlbums() = filter { it is SongItem || it is AlbumItem }
+
+        val suggestions = (similarRecommendations.value.orEmpty().flatMap { it.items } +
+                homePage.value?.sections.orEmpty().flatMap { it.items }).songsAndAlbums()
+
+        // 1. Maybe you know
+        addOnline("Có thể bạn biết", suggestions.firstOrNull())
+        // 2. New release: the store's own new-release shelf (recent, for the app's country) is already
+        // sorted with your favourite and known artists first; the wider "not heard yet" list is the fallback.
+        addOnline("Mới ra mắt", explorePage.value?.newReleaseAlbums?.firstOrNull() ?: newForYou.value?.firstOrNull())
+        // 3. Long time no hear
+        addSong("Đã lâu không nghe", forgottenFavorites.value?.firstOrNull { it.id !in used })
+        // 4. Most played
+        addSong("Nghe nhiều", heroMostPlayed.firstOrNull { it.id !in used })
+        // 5. Favourite artist
+        heroArtists.firstOrNull()?.let { artist ->
+            if (slides.size < HERO_PAGES && used.add(artist.id)) {
+                slides += HeroSlide(
+                    key = "artist_${artist.id}",
+                    label = "Nghệ sĩ yêu thích",
+                    title = artist.title,
+                    thumbnail = artist.thumbnailUrl,
+                    target = HeroTarget.ArtistPage(artist.id),
+                )
+            }
+        }
+        // 6. Liked song
+        addSong("Bài hát yêu thích", heroLiked.firstOrNull { it.id !in used })
+        // 7. Trending
+        addOnline(
+            "Đang thịnh hành",
+            (countryChart.value?.songs ?: globalChart.value?.songs)?.firstOrNull { it.id !in used }
+        )
+
+        // Fill up to HERO_PAGES with more suggestions (e.g. a new account with no history yet).
+        suggestions.drop(1).forEach { addOnline("Đề xuất cho bạn", it) }
+        (explorePage.value?.newReleaseAlbums.orEmpty()).forEach { addOnline("Mới ra mắt", it) }
+
+        heroSlides.value = slides
+    }
+
+    private suspend fun loadCharts() {
+        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+        val country = YouTube.locale.gl
+
+        suspend fun fetch(code: String): ChartsPage? =
+            YouTube.charts(code).onFailure { reportException(it) }.getOrNull()?.let { page ->
+                page.copy(songs = page.songs.filterExplicit(hideExplicit).take(CHART_LIMIT))
+                    .takeIf { it.songs.isNotEmpty() }
+            }
+
+        coroutineScope {
+            val local = if (country.isNotBlank() && country != ChartsPage.GLOBAL) async { fetch(country) } else null
+            val global = async { fetch(ChartsPage.GLOBAL) }
+            countryChart.value = local?.await()
+            globalChart.value = global.await()
+        }
+        updateHero()
     }
 
     /**
@@ -232,21 +385,23 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             isRefreshing.value = true
             load()
+            loadCharts()
             isRefreshing.value = false
         }
     }
 
-    private fun mixRecent(songs: List<Song>, albums: List<Album>): List<LocalItem> {
-        val songQueue = ArrayDeque<LocalItem>(songs.take(6))
-        val albumQueue = ArrayDeque<LocalItem>(albums.take(3))
+    /** Interleaves recent songs, albums and playlists so one kind does not crowd out the others. */
+    private fun mixRecent(songs: List<Song>, albums: List<Album>, playlists: List<Playlist>): List<LocalItem> {
+        val songQueue = ArrayDeque<LocalItem>(songs)
+        val albumQueue = ArrayDeque<LocalItem>(albums)
+        val playlistQueue = ArrayDeque<LocalItem>(playlists)
+        val pattern = listOf(songQueue, albumQueue, playlistQueue, songQueue)
         val result = ArrayList<LocalItem>()
-        while (result.size < 6 && (songQueue.isNotEmpty() || albumQueue.isNotEmpty())) {
-            val preferAlbum = result.size % 3 == 2
-            val next = when {
-                preferAlbum && albumQueue.isNotEmpty() -> albumQueue.removeFirst()
-                songQueue.isNotEmpty() -> songQueue.removeFirst()
-                else -> albumQueue.removeFirst()
-            }
+        var i = 0
+        while (result.size < RECENT_LIMIT) {
+            val next = pattern[i++ % pattern.size].removeFirstOrNull()
+                ?: listOf(songQueue, albumQueue, playlistQueue).firstOrNull { it.isNotEmpty() }?.removeFirst()
+                ?: break
             result += next
         }
         return result
@@ -258,11 +413,17 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            database.recentlyPlayedSongs(12).collect { recentSongs ->
-                val topAlbums = database.mostPlayedAlbums(0L, limit = 6).first()
-                    .filter { it.album.thumbnailUrl != null }
-                recentItems.value = mixRecent(recentSongs, topAlbums)
-            }
+            loadCharts()
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            combine(
+                database.recentlyPlayedSongs(RECENT_LIMIT),
+                database.recentlyPlayedAlbums(6),
+                database.recentlyPlayedPlaylists(6),
+            ) { songs, albums, playlists ->
+                mixRecent(songs, albums.filter { it.album.thumbnailUrl != null }, playlists)
+            }.collect { recentItems.value = it }
         }
     }
 }
