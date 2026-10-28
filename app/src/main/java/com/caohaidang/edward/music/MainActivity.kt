@@ -65,6 +65,7 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -424,8 +425,18 @@ class MainActivity : ComponentActivity() {
                         }
                     )
 
-                    LaunchedEffect(navBackStackEntry) {
-                        topAppBarScrollBehavior.state.resetHeightOffset()
+                    // The scroll state is shared by every screen. A new screen's TopAppBar is measured in the same
+                    // frame as the navigation, before a LaunchedEffect could run, so a stale offset (scrolled on
+                    // the previous screen) makes it measure with a negative height and crash:
+                    // "Size(1220 x -502) is out of range". Reset it synchronously, before layout.
+                    val lastEntryId = remember { arrayOfNulls<String>(1) }
+                    SideEffect {
+                        val id = navBackStackEntry?.id
+                        if (lastEntryId[0] != id) {
+                            lastEntryId[0] = id
+                            topAppBarScrollBehavior.state.heightOffset = 0f
+                            topAppBarScrollBehavior.state.contentOffset = 0f
+                        }
                     }
 
                     LaunchedEffect(playerConnection) {
