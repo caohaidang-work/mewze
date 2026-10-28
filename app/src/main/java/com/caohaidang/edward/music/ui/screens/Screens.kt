@@ -11,11 +11,10 @@ sealed class Screens(
 
     val showLabel: Boolean = true
 ) {
-    // Icon mèo riêng cho thanh điều hướng (nav_*), không dùng chung với các màn hình khác.
-    object Home : Screens("home", R.string.home, R.drawable.nav_home)
-    object Search : Screens("search_tab", R.string.search, R.drawable.nav_search, showLabel = false)
-    object Library : Screens("library", R.string.library, R.drawable.nav_library, showLabel = false)
-    object Account : Screens("account", R.string.account, R.drawable.nav_account)
+    object Home : Screens("home", R.string.home, R.drawable.home)
+    object Search : Screens("search_tab", R.string.search, R.drawable.search, showLabel = false)
+    object Library : Screens("library", R.string.library, R.drawable.library_music, showLabel = false)
+    object Account : Screens("account", R.string.account, R.drawable.person)
 
     object Welcome : Screens("welcome")
     object Login : Screens("login")

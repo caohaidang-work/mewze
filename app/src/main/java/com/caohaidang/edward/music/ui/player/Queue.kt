@@ -221,7 +221,7 @@ fun Queue(
                 ) {
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         BottomBarToggle(
-                            icon = R.drawable.player_lyrics,
+                            icon = R.drawable.lyrics,
                             active = showLyrics && !showQueue,
                             onClick = {
                                 // Lyrics đang hiện (và queue tắt) -> tắt; ngược lại -> bật lyrics, tắt queue
@@ -235,7 +235,7 @@ fun Queue(
 
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                         BottomBarToggle(
-                            icon = R.drawable.player_queue,
+                            icon = R.drawable.queue_music,
                             active = showQueue,
                             onClick = { setPanel(false, !showQueue) }
                         )
