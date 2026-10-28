@@ -620,8 +620,11 @@ object YouTube {
     }
 
     /**
-     * YouTube Music "Top songs" chart. [country] is an ISO country code, or [ChartsPage.GLOBAL] for the
-     * worldwide chart. The response is read as raw JSON because the layout differs by region and changes often.
+     * YouTube Music chart. [country] is an ISO country code, or [ChartsPage.GLOBAL] for the worldwide chart.
+     * The response is read as raw JSON because the layout differs by region and changes often.
+     *
+     * A "Top songs" shelf is used when the page has one. Otherwise the chart is the playlist linked from the
+     * "Video charts" shelf (the daily one first), which is what the YouTube Music app shows as its chart.
      */
     suspend fun charts(country: String): Result<ChartsPage> = runCatching {
         val body = innerTube.browse(
@@ -629,10 +632,18 @@ object YouTube {
             browseId = "FEmusic_charts",
             selectedValues = listOf(country),
         ).bodyAsText()
-        ChartsPage.fromJson(country, body)
-            ?: throw IllegalStateException(
-                "YouTube không trả về bảng xếp hạng cho $country (${ChartsPage.describe(body)})"
-            )
+        ChartsPage.fromJson(country, body)?.let { return@runCatching it }
+
+        val playlists = ChartsPage.chartPlaylists(body).sortedBy { playlist ->
+            if (ChartsPage.DAILY_TITLES.any { playlist.title.contains(it, ignoreCase = true) }) 0 else 1
+        }
+        for (playlist in playlists.take(3)) {
+            val playlistBody = innerTube.browse(WEB_REMIX, browseId = "VL${playlist.playlistId}").bodyAsText()
+            ChartsPage.fromPlaylistJson(country, playlistBody)?.let { return@runCatching it }
+        }
+        throw IllegalStateException(
+            "YouTube không trả về bảng xếp hạng cho $country (${ChartsPage.describe(body)}; playlists=$playlists)"
+        )
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {

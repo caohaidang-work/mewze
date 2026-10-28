@@ -32,7 +32,49 @@ data class ChartsPage(
             "video", "artist", "nghệ sĩ", "trending", "thịnh hành", "xu hướng", "đang hot", "mới", "new",
         )
 
+        /** Titles (several languages) of the daily chart playlist; preferred over the weekly / yearly ones. */
+        val DAILY_TITLES = listOf("daily", "hàng ngày", "mỗi ngày")
+
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+        /** A chart playlist linked from the charts page ("Video charts" cards). */
+        data class ChartPlaylist(val title: String, val playlistId: String)
+
+        /**
+         * The chart playlists (e.g. "Daily top music videos") linked from the charts page, in page order.
+         * YouTube Music no longer has a "Top songs" shelf: its chart is made of these playlists.
+         */
+        fun chartPlaylists(body: String): List<ChartPlaylist> {
+            val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return emptyList()
+            val sections = findKey(root, "sectionListRenderer")?.obj()?.get("contents") as? JsonArray
+                ?: return emptyList()
+            return sections.flatMap { section ->
+                val sectionObj = section.obj() ?: return@flatMap emptyList()
+                val shelf = sectionObj["musicCarouselShelfRenderer"]?.obj()
+                    ?: sectionObj["musicImmersiveCarouselShelfRenderer"]?.obj()
+                    ?: return@flatMap emptyList()
+                (shelf["contents"] as? JsonArray).orEmpty().mapNotNull { content ->
+                    val card = content.obj()?.get("musicTwoRowItemRenderer")?.obj() ?: return@mapNotNull null
+                    val browseId = card["navigationEndpoint"]?.obj()?.get("browseEndpoint")?.obj()?.str("browseId")
+                    val playlistId = browseId?.takeIf { it.startsWith("VL") }?.removePrefix("VL")
+                        ?: findKey(card, "watchPlaylistEndpoint")?.obj()?.str("playlistId")
+                        ?: return@mapNotNull null
+                    val title = (card["title"]?.obj()?.get("runs") as? JsonArray)
+                        ?.firstOrNull()?.obj()?.text().orEmpty()
+                    ChartPlaylist(title, playlistId)
+                }
+            }.distinctBy { it.playlistId }
+        }
+
+        /** Reads the tracks of a chart playlist page (`browse` of `VL<playlistId>`), in playlist order. */
+        fun fromPlaylistJson(country: String, body: String): ChartsPage? {
+            val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return null
+            val shelf = findKey(root, "musicPlaylistShelfRenderer")?.obj() ?: return null
+            val songs = (shelf["contents"] as? JsonArray).orEmpty().mapNotNull { content ->
+                content.obj()?.get("musicResponsiveListItemRenderer")?.obj()?.let { rowSong(it) }
+            }.distinctBy { it.id }
+            return if (songs.size >= 3) ChartsPage(country, songs) else null
+        }
 
         /**
          * Reads the "Top songs" chart from a `FEmusic_charts` response.

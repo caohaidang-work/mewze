@@ -88,4 +88,37 @@ class ChartsPageTest {
         )
         assertEquals(ids("s"), ChartsPage.fromJson("US", body)!!.songs.map { it.id })
     }
+
+    private fun playlistCard(title: String, browseId: String) = """
+        {"musicTwoRowItemRenderer":{
+          "title":{"runs":[{"text":"$title"}]},
+          "navigationEndpoint":{"browseEndpoint":{"browseId":"$browseId"}}}}"""
+
+    private fun playlistPage(items: List<String>) = """
+        {"contents":{"twoColumnBrowseResultsRenderer":{"secondaryContents":{"sectionListRenderer":{"contents":[
+          {"musicPlaylistShelfRenderer":{"contents":[${items.joinToString(",")}]}}]}}}}}"""
+
+    @Test
+    fun readsChartPlaylistsFromVideoChartsShelf() {
+        val body = page(
+            carousel("Bảng xếp hạng video", listOf(
+                playlistCard("Weekly Top Music Videos", "VLPLweekly"),
+                playlistCard("Daily Top Music Videos", "VLPLdaily"),
+            )),
+            carousel("Nghệ sĩ hàng đầu", ids("a").map(::row)),
+        )
+        val playlists = ChartsPage.chartPlaylists(body)
+        assertEquals(listOf("PLweekly", "PLdaily"), playlists.map { it.playlistId })
+        assertEquals("Daily Top Music Videos", playlists[1].title)
+        // The only readable chart on that page is a playlist, so the page itself yields no chart.
+        assertNull(ChartsPage.fromJson("VN", body))
+    }
+
+    @Test
+    fun readsSongsFromChartPlaylistPage() {
+        val chart = ChartsPage.fromPlaylistJson("VN", playlistPage(ids("p").map(::row)))
+        assertNotNull(chart)
+        assertEquals(ids("p"), chart!!.songs.map { it.id })
+        assertNull(ChartsPage.fromPlaylistJson("VN", playlistPage(listOf(row("p1")))))
+    }
 }
