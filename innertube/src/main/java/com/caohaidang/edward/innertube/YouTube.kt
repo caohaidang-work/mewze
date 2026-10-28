@@ -630,7 +630,9 @@ object YouTube {
             selectedValues = listOf(country),
         ).bodyAsText()
         ChartsPage.fromJson(country, body)
-            ?: throw IllegalStateException("YouTube không trả về bảng xếp hạng cho $country")
+            ?: throw IllegalStateException(
+                "YouTube không trả về bảng xếp hạng cho $country (${ChartsPage.describe(body)})"
+            )
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {

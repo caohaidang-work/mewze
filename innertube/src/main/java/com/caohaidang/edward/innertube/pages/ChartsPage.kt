@@ -74,6 +74,32 @@ data class ChartsPage(
             return ChartsPage(country, songs.distinctBy { it.id })
         }
 
+        /**
+         * One-line summary of a charts response (top-level keys and the shelves found), for error messages,
+         * so a log shows what YouTube actually returned when no chart could be read.
+         */
+        fun describe(body: String): String {
+            val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
+                ?: return "not JSON: ${body.take(200)}"
+            val sections = findKey(root, "sectionListRenderer")?.obj()?.get("contents") as? JsonArray
+                ?: return "no sectionListRenderer; keys=${root.obj()?.keys}; body=${body.take(300)}"
+            val shelves = sections.map { section ->
+                val sectionObj = section.obj()
+                val shelf = sectionObj?.get("musicCarouselShelfRenderer")?.obj()
+                    ?: sectionObj?.get("musicImmersiveCarouselShelfRenderer")?.obj()
+                    ?: sectionObj?.get("musicShelfRenderer")?.obj()
+                if (shelf == null) {
+                    "<${sectionObj?.keys?.firstOrNull()}>"
+                } else {
+                    val contents = (shelf["contents"] as? JsonArray).orEmpty().mapNotNull { it.obj() }
+                    val rows = contents.count { it["musicResponsiveListItemRenderer"] != null }
+                    val cards = contents.count { it["musicTwoRowItemRenderer"] != null }
+                    "'${shelfTitle(shelf)}'(rows=$rows,cards=$cards)"
+                }
+            }
+            return "shelves=$shelves"
+        }
+
         private fun shelfTitle(shelf: JsonObject): String {
             val header = shelf["header"]?.obj()
                 ?.get("musicCarouselShelfBasicHeaderRenderer")?.obj()
