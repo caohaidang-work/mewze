@@ -110,6 +110,9 @@ fun NavGraphBuilder.navigationBuilder(
     composable("history") {
         HistoryScreen(navController)
     }
+    composable("downloaded") {
+        DownloadedScreen(navController)
+    }
     composable("stats") {
         StatsScreen(navController)
     }
