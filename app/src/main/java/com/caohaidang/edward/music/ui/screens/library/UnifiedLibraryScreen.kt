@@ -63,10 +63,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Shape
-import androidx.media3.exoplayer.offline.Download
-import com.caohaidang.edward.music.LocalDownloadUtil
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.Dp
 import com.caohaidang.edward.music.constants.ArtistSortType
-import com.caohaidang.edward.music.ui.utils.formatFileSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +105,7 @@ import com.caohaidang.edward.music.ui.component.EmptyPlaceholder
 import com.caohaidang.edward.music.ui.component.LocalMenuState
 import com.caohaidang.edward.music.ui.component.PlaylistGridItem
 import com.caohaidang.edward.music.ui.component.PlaylistListItem
+import com.caohaidang.edward.music.ui.component.PlaylistThumbnail
 import com.caohaidang.edward.music.ui.component.SongGridItem
 import com.caohaidang.edward.music.ui.component.SongListItem
 import com.caohaidang.edward.music.ui.component.TextFieldDialog
@@ -359,170 +359,194 @@ private fun LibraryHero(
             }
         }
 
-        val tilts = listOf(-12f, -4f, 8f)
-        Box(
+        CoverFan(
+            covers = covers,
+            coverSize = 84.dp,
+            step = 30.dp,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 20.dp)
-                .size(width = 150.dp, height = 110.dp)
-        ) {
-            covers.take(3).ifEmpty { listOf(null, null, null) }.forEachIndexed { i, url ->
-                StackCover(
-                    url = url,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .offset(x = (i * 30).dp, y = ((i % 2) * 8).dp)
-                        .size(84.dp)
-                        .rotate(tilts[i % tilts.size])
-                )
-            }
-        }
-    }
-}
-
-/** Small square tile with an icon on top and title / subtitle at the bottom. */
-@Composable
-private fun BentoTile(
-    @androidx.annotation.DrawableRes icon: Int,
-    title: String,
-    subtitle: String,
-    container: Color,
-    content: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Column(
-        verticalArrangement = Arrangement.SpaceBetween,
-        modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(container)
-            .clickable(onClick = onClick)
-            .padding(16.dp)
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(content)
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = container,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelMedium,
-                color = content.copy(alpha = 0.75f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/** Wide strip used for "Thống kê". */
-@Composable
-private fun BentoStrip(
-    @androidx.annotation.DrawableRes icon: Int,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(76.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(scheme.surfaceContainerHigh)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelMedium,
-                color = scheme.onSurfaceVariant
-            )
-        }
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = scheme.primary,
-            modifier = Modifier.size(28.dp)
         )
     }
 }
 
-/** Collection card (Playlist / Nghệ sĩ / Album) with a small stack of covers in the corner. */
+/** Pastel colours of the bento tiles; every kind of tile keeps its own hue. */
+private enum class BentoTone { PLAYLIST, ARTIST, ALBUM }
+
+private class TileColors(val container: Color, val content: Color)
+
+@Composable
+private fun tileColors(tone: BentoTone): TileColors {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return when (tone) {
+        BentoTone.PLAYLIST ->
+            if (dark) TileColors(Color(0xFF4A2B1D), Color(0xFFFFDCCB))
+            else TileColors(Color(0xFFFFE2D4), Color(0xFF4A1F0D))
+
+        BentoTone.ARTIST ->
+            if (dark) TileColors(Color(0xFF1D4631), Color(0xFFC9F3DB))
+            else TileColors(Color(0xFFD6F3E2), Color(0xFF0B3B25))
+
+        BentoTone.ALBUM ->
+            if (dark) TileColors(Color(0xFF342A5E), Color(0xFFE4DDFF))
+            else TileColors(Color(0xFFE6DFFF), Color(0xFF2A1A5C))
+    }
+}
+
+/** Up to three covers fanned out and slightly tilted, same look as the "Yêu thích" tile. */
+@Composable
+private fun CoverFan(
+    covers: List<String?>,
+    coverSize: Dp,
+    step: Dp,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(18.dp),
+) {
+    val tilts = listOf(-12f, -4f, 8f)
+    val items = covers.take(3).ifEmpty { listOf(null, null, null) }
+    Box(
+        modifier = modifier.size(
+            width = coverSize + step * (items.size - 1),
+            height = coverSize + 12.dp
+        )
+    ) {
+        items.forEachIndexed { i, url ->
+            StackCover(
+                url = url,
+                shape = shape,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = step * i, y = ((i % 2) * 8).dp)
+                    .size(coverSize)
+                    .rotate(tilts[i % tilts.size])
+            )
+        }
+    }
+}
+
+/** Collection tile (Playlist / Nghệ sĩ / Album): own colour, title at the bottom, tilted covers in the corner. */
 @Composable
 private fun CollectionCard(
     title: String,
     subtitle: String,
     covers: List<String?>,
     circle: Boolean,
+    tone: BentoTone,
+    coverSize: Dp,
+    coverStep: Dp,
+    coverAlignment: Alignment,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val shape: Shape = if (circle) CircleShape else RoundedCornerShape(14.dp)
+    val colors = tileColors(tone)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(scheme.surfaceContainerHigh)
+            .clip(RoundedCornerShape(28.dp))
+            .background(colors.container)
             .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 14.dp, end = 12.dp)
+                .padding(start = 18.dp, bottom = 16.dp, end = 12.dp)
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = colors.content
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.labelMedium,
-                color = scheme.onSurfaceVariant
+                color = colors.content.copy(alpha = 0.75f)
             )
         }
+        CoverFan(
+            covers = covers,
+            coverSize = coverSize,
+            step = coverStep,
+            shape = if (circle) CircleShape else RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .align(coverAlignment)
+                .padding(14.dp)
+        )
+    }
+}
+
+private val RecentCoverSize = 76.dp
+
+/** Row of "Mới thêm gần đây": a coloured card with a big cover on the left. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RecentRow(
+    typeLabel: String,
+    title: String,
+    subtitle: String,
+    colors: TileColors,
+    @androidx.annotation.DrawableRes trailingIcon: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    cover: @Composable () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(colors.container)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(10.dp)
+    ) {
         Box(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 14.dp, end = 14.dp)
-                .size(width = 90.dp, height = 52.dp)
+                .size(RecentCoverSize)
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors.content.copy(alpha = 0.12f))
         ) {
-            covers.take(3).ifEmpty { listOf(null, null) }.forEachIndexed { i, url ->
-                StackCover(
-                    url = url,
-                    shape = shape,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = (-(i * 26)).dp)
-                        .size(52.dp)
+            cover()
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = typeLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.content.copy(alpha = 0.65f),
+                maxLines = 1
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.content,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.content.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.content.copy(alpha = 0.12f))
+        ) {
+            Icon(
+                painter = painterResource(trailingIcon),
+                contentDescription = null,
+                tint = colors.content,
+                modifier = Modifier.size(22.dp)
+            )
         }
     }
 }
@@ -551,13 +575,6 @@ fun UnifiedLibraryScreen(
     val artists by remember(database) { database.artists(ArtistSortType.CREATE_DATE, true) }
         .collectAsState(initial = emptyList())
 
-    val downloadUtil = LocalDownloadUtil.current
-    val downloads by downloadUtil.downloads.collectAsState()
-    val downloadedStats = remember(downloads) {
-        val done = downloads.values.filter { it.state == Download.STATE_COMPLETED }
-        done.size to done.sumOf { it.bytesDownloaded }
-    }
-
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
 
@@ -584,7 +601,14 @@ fun UnifiedLibraryScreen(
         )
     }
 
-    // A few of each kind, interleaved, so the grid reads as "recently added".
+    val playlistColors = tileColors(BentoTone.PLAYLIST)
+    val albumColors = tileColors(BentoTone.ALBUM)
+    val songColors = TileColors(
+        container = MaterialTheme.colorScheme.primaryContainer,
+        content = MaterialTheme.colorScheme.onPrimaryContainer
+    )
+
+    // A few of each kind, interleaved, so the list reads as "recently added".
     val recent: List<Any> = remember(likedAlbums, likedSongs, playlists) {
         buildList {
             val p = playlists.take(3)
@@ -637,6 +661,14 @@ fun UnifiedLibraryScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Đã tải xuống") },
+                            leadingIcon = { Icon(painterResource(R.drawable.download), null) },
+                            onClick = {
+                                showMoreMenu = false
+                                navController.navigate("downloaded")
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Lịch sử nghe") },
                             leadingIcon = { Icon(painterResource(R.drawable.history), null) },
                             onClick = {
@@ -650,7 +682,6 @@ fun UnifiedLibraryScreen(
         }
 
         item(key = "bento", span = { GridItemSpan(maxLineSpan) }) {
-            val scheme = MaterialTheme.colorScheme
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
@@ -663,32 +694,6 @@ fun UnifiedLibraryScreen(
                     onClick = { navController.navigate(Screens.Songs.route) },
                     onPlay = { if (likedSongs.isNotEmpty()) playSongs(likedSongs, 0) },
                     onShuffle = { if (likedSongs.isNotEmpty()) playSongs(likedSongs.shuffled(), 0) }
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BentoTile(
-                        icon = R.drawable.download,
-                        title = "Đã tải xuống",
-                        subtitle = "${downloadedStats.first} bài · ${formatFileSize(downloadedStats.second)}",
-                        container = scheme.tertiaryContainer,
-                        content = scheme.onTertiaryContainer,
-                        modifier = Modifier.weight(1f).height(124.dp),
-                        onClick = { navController.navigate("downloaded") }
-                    )
-                    BentoTile(
-                        icon = R.drawable.history,
-                        title = "Lịch sử nghe",
-                        subtitle = "Bài đã nghe gần đây",
-                        container = scheme.secondaryContainer,
-                        content = scheme.onSecondaryContainer,
-                        modifier = Modifier.weight(1f).height(124.dp),
-                        onClick = { navController.navigate("history") }
-                    )
-                }
-                BentoStrip(
-                    icon = R.drawable.trending_up,
-                    title = "Thống kê",
-                    subtitle = "Xem bạn đã nghe gì",
-                    onClick = { navController.navigate("stats") }
                 )
             }
         }
@@ -715,7 +720,11 @@ fun UnifiedLibraryScreen(
                         subtitle = "${playlists.size} playlist",
                         covers = playlists.mapNotNull { it.displayThumbnails.firstOrNull() },
                         circle = false,
-                        modifier = Modifier.weight(1f).height(128.dp),
+                        tone = BentoTone.PLAYLIST,
+                        coverSize = 60.dp,
+                        coverStep = 22.dp,
+                        coverAlignment = Alignment.TopEnd,
+                        modifier = Modifier.weight(1f).height(156.dp),
                         onClick = { navController.navigate(Screens.Playlists.route) }
                     )
                     CollectionCard(
@@ -723,7 +732,11 @@ fun UnifiedLibraryScreen(
                         subtitle = "${artists.size} nghệ sĩ",
                         covers = artists.mapNotNull { it.artist.thumbnailUrl },
                         circle = true,
-                        modifier = Modifier.weight(1f).height(128.dp),
+                        tone = BentoTone.ARTIST,
+                        coverSize = 60.dp,
+                        coverStep = 22.dp,
+                        coverAlignment = Alignment.TopEnd,
+                        modifier = Modifier.weight(1f).height(156.dp),
                         onClick = { navController.navigate(Screens.Artists.route) }
                     )
                 }
@@ -732,7 +745,11 @@ fun UnifiedLibraryScreen(
                     subtitle = "${likedAlbums.size} album",
                     covers = likedAlbums.mapNotNull { it.thumbnailUrl },
                     circle = false,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    tone = BentoTone.ALBUM,
+                    coverSize = 68.dp,
+                    coverStep = 38.dp,
+                    coverAlignment = Alignment.CenterEnd,
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
                     onClick = { navController.navigate(Screens.Albums.route) }
                 )
             }
@@ -758,71 +775,100 @@ fun UnifiedLibraryScreen(
             }
         }, span = { GridItemSpan(maxLineSpan) }) { index ->
             when (val item = recent[index]) {
-                is Playlist -> PlaylistListItem(
-                    playlist = item,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { navController.navigate("local_playlist/${item.id}") },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    PlaylistMenu(
-                                        playlist = item,
-                                        coroutineScope = coroutineScope,
-                                        onDismiss = menuState::dismiss
+                is Playlist -> RecentRow(
+                    typeLabel = "Playlist",
+                    title = item.playlist.name,
+                    subtitle = pluralStringResource(R.plurals.n_song, item.songCount, item.songCount),
+                    colors = playlistColors,
+                    trailingIcon = R.drawable.navigate_next,
+                    onClick = { navController.navigate("local_playlist/${item.id}") },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            PlaylistMenu(
+                                playlist = item,
+                                coroutineScope = coroutineScope,
+                                onDismiss = menuState::dismiss
+                            )
+                        }
+                    },
+                    cover = {
+                        PlaylistThumbnail(
+                            thumbnails = item.displayThumbnails,
+                            size = RecentCoverSize,
+                            placeHolder = {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(RecentCoverSize)) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.queue_music),
+                                        contentDescription = null,
+                                        tint = playlistColors.content,
+                                        modifier = Modifier.size(32.dp)
                                     )
-                                }
-                            }
-                        )
-                )
-
-                is Album -> AlbumListItem(
-                    album = item,
-                    isActive = item.id == mediaMetadata?.album?.id,
-                    isPlaying = isPlaying,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { navController.navigate("album/${item.id}") },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    AlbumMenu(
-                                        originalAlbum = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss
-                                    )
-                                }
-                            }
-                        )
-                )
-
-                is Song -> SongListItem(
-                    song = item,
-                    isActive = item.id == mediaMetadata?.id,
-                    isPlaying = isPlaying,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = {
-                                if (item.id == mediaMetadata?.id) {
-                                    playerConnection.player.togglePlayPause()
-                                } else {
-                                    playSongs(likedSongs, likedSongs.indexOf(item).coerceAtLeast(0))
                                 }
                             },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    SongMenu(
-                                        originalSong = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss
-                                    )
-                                }
-                            }
+                            shape = RoundedCornerShape(18.dp)
                         )
+                    }
+                )
+
+                is Album -> RecentRow(
+                    typeLabel = "Album",
+                    title = item.album.title,
+                    subtitle = item.artists.joinToString { it.name },
+                    colors = albumColors,
+                    trailingIcon = R.drawable.navigate_next,
+                    onClick = { navController.navigate("album/${item.id}") },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            AlbumMenu(
+                                originalAlbum = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss
+                            )
+                        }
+                    },
+                    cover = {
+                        AsyncImage(
+                            model = item.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                )
+
+                is Song -> RecentRow(
+                    typeLabel = "Bài hát",
+                    title = item.song.title,
+                    subtitle = item.artists.joinToString { it.name },
+                    colors = songColors,
+                    trailingIcon = if (item.id == mediaMetadata?.id && isPlaying) R.drawable.pause else R.drawable.play,
+                    onClick = {
+                        if (item.id == mediaMetadata?.id) {
+                            playerConnection.player.togglePlayPause()
+                        } else {
+                            playSongs(likedSongs, likedSongs.indexOf(item).coerceAtLeast(0))
+                        }
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            SongMenu(
+                                originalSong = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss
+                            )
+                        }
+                    },
+                    cover = {
+                        AsyncImage(
+                            model = item.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 )
             }
         }
