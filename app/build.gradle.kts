@@ -72,8 +72,8 @@ android {
         applicationId = "com.caohaidang.edward.music"
         minSdk = 24
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.2.2"
+        versionCode = 11
+        versionName = "2.2.3"
         buildConfigField("String", "SPOTIFY_CLIENT_ID", spotifyClientId.asJavaLiteral())
         buildConfigField("String", "AI_TRANSLATE_KEY", aiTranslateKey.asJavaLiteral())
         buildConfigField("String", "AI_TRANSLATE_PROVIDER", aiTranslateProvider.asJavaLiteral())
