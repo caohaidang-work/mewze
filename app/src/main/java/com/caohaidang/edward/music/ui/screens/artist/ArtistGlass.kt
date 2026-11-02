@@ -168,3 +168,39 @@ internal fun ArtistGlassCard(
         }
     )
 }
+
+/**
+ * Song row for the full-page lists (top songs, library songs of an artist).
+ * Uses the theme-aware pastel [colors] so it sits on the page's liquid backdrop; [trailing] is the
+ * "more" button, or a checkbox while selecting.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun GlassPageSongRow(
+    title: String,
+    subtitle: String,
+    thumbnailUrl: String?,
+    colors: TileColors,
+    active: Boolean,
+    playing: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit,
+) {
+    GlassRow(
+        title = title,
+        subtitle = subtitle,
+        colors = colors,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = modifier,
+        coverSize = 60.dp,
+        highlighted = active || selected,
+        tintAlpha = 0.50f,
+        activeTintAlpha = 0.85f,
+        trailing = trailing,
+        cover = { SongCover(url = thumbnailUrl, active = active, playing = playing) }
+    )
+}

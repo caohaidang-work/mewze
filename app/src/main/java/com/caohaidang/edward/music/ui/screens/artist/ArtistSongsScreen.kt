@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -58,7 +60,12 @@ import com.caohaidang.edward.music.playback.queues.ListQueue
 import com.caohaidang.edward.music.ui.component.HideOnScrollFAB
 import com.caohaidang.edward.music.ui.component.IconButton
 import com.caohaidang.edward.music.ui.component.LocalMenuState
-import com.caohaidang.edward.music.ui.component.SongListItem
+import com.caohaidang.edward.music.ui.component.liquidBackdrop
+import com.caohaidang.edward.music.ui.screens.library.BentoTone
+import com.caohaidang.edward.music.ui.screens.library.GlassIconButton
+import com.caohaidang.edward.music.ui.screens.library.tileColors
+import com.caohaidang.edward.music.utils.joinByBullet
+import com.caohaidang.edward.music.utils.makeTimeString
 import com.caohaidang.edward.music.ui.component.SortHeader
 import com.caohaidang.edward.music.ui.menu.SongMenu
 import com.caohaidang.edward.music.ui.menu.SongSelectionMenu
@@ -118,8 +125,12 @@ fun ArtistSongsScreen(
         }
     }
 
+    val colors = tileColors(BentoTone.SONG)
+
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .liquidBackdrop()
     ) {
         LazyColumn(
             state = lazyListState,
@@ -152,7 +163,7 @@ fun ArtistSongsScreen(
                     Text(
                         text = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = colors.content
                     )
                 }
             }
@@ -169,60 +180,66 @@ fun ArtistSongsScreen(
                     }
                 }
 
-                SongListItem(
-                    song = song,
-                    isActive = song.id == mediaMetadata?.id,
-                    isPlaying = isPlaying,
-                    trailingContent = {
+                val showMenu = {
+                    menuState.show {
+                        SongMenu(
+                            originalSong = song,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                        )
+                    }
+                }
+
+                GlassPageSongRow(
+                    title = song.song.title,
+                    subtitle = joinByBullet(
+                        song.artists.joinToString { it.name },
+                        makeTimeString(song.song.duration * 1000L)
+                    ).orEmpty(),
+                    thumbnailUrl = song.song.thumbnailUrl,
+                    colors = colors,
+                    active = song.id == mediaMetadata?.id,
+                    playing = isPlaying,
+                    selected = inSelectMode && song.id in selection,
+                    onClick = {
+                        if (inSelectMode) {
+                            onCheckedChange(song.id !in selection)
+                        } else if (song.id == mediaMetadata?.id) {
+                            playerConnection.player.togglePlayPause()
+                        } else {
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = context.getString(R.string.queue_all_songs),
+                                    items = songs.map { it.toMediaItem() },
+                                    startIndex = index
+                                )
+                            )
+                        }
+                    },
+                    onLongClick = {
+                        if (!inSelectMode) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            inSelectMode = true
+                            onCheckedChange(true)
+                        }
+                    },
+                    trailing = {
                         if (inSelectMode) {
                             Checkbox(
                                 checked = song.id in selection,
                                 onCheckedChange = onCheckedChange
                             )
                         } else {
-                            IconButton(
-                                onClick = {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss
-                                        )
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.more_vert),
-                                    contentDescription = null
-                                )
-                            }
+                            GlassIconButton(
+                                icon = R.drawable.more_vert,
+                                iconColor = colors.content,
+                                fill = colors.content,
+                                fillAlpha = 0.12f,
+                                onClick = { showMenu() }
+                            )
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(onClick = {
-                            if (inSelectMode) {
-                                onCheckedChange(song.id !in selection)
-                            } else if (song.id == mediaMetadata?.id) {
-                                playerConnection.player.togglePlayPause()
-                            } else {
-                                playerConnection.playQueue(
-                                    ListQueue(
-                                        title = context.getString(R.string.queue_all_songs),
-                                        items = songs.map { it.toMediaItem() },
-                                        startIndex = index
-                                    )
-                                )
-                            }
-                        },
-                            onLongClick = {
-                                if (!inSelectMode) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    inSelectMode = true
-                                    onCheckedChange(true)
-                                }
-                            })
-                        .animateItem()
+                    modifier = Modifier.animateItem()
                 )
             }
         }
@@ -289,6 +306,10 @@ fun ArtistSongsScreen(
                     }
                 }
             },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
+            ),
             scrollBehavior = scrollBehavior
         )
 
