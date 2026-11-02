@@ -428,17 +428,17 @@ fun BottomSheetPlayer(
                     .padding(horizontal = PlayerHorizontalPadding)
             ) {
                 ResizableIconButton(
-                    icon = R.drawable.skip_previous,
+                    icon = R.drawable.player_skip_previous,
                     color = Color.White,
                     enabled = canSkipPrevious,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(56.dp),
                     onClick = playerConnection::seekToPrevious
                 )
 
                 ResizableIconButton(
-                    icon = if (playbackState == STATE_ENDED) R.drawable.replay else if (isPlaying) R.drawable.pause else R.drawable.play,
+                    icon = if (playbackState == STATE_ENDED) R.drawable.replay else if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
                     color = Color.White,
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(84.dp),
                     onClick = {
                         if (playbackState == STATE_ENDED) {
                             playerConnection.player.seekTo(0, 0)
@@ -450,10 +450,10 @@ fun BottomSheetPlayer(
                 )
 
                 ResizableIconButton(
-                    icon = R.drawable.skip_next,
+                    icon = R.drawable.player_skip_next,
                     color = Color.White,
                     enabled = canSkipNext,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(56.dp),
                     onClick = playerConnection::seekToNext
                 )
             }
