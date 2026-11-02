@@ -4,21 +4,21 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.caohaidang.edward.music.constants.ArtistFilter
 import com.caohaidang.edward.music.constants.ArtistFilterKey
-import com.caohaidang.edward.music.ui.component.glassCard
+import com.caohaidang.edward.music.ui.component.liquidBackdrop
+import com.caohaidang.edward.music.ui.component.liquidGlass
+import com.caohaidang.edward.music.db.entities.Artist
+import androidx.compose.ui.text.style.TextAlign
 import com.caohaidang.edward.music.ui.menu.ArtistMenu
 import com.caohaidang.edward.music.ui.screens.Screens
 import com.caohaidang.edward.music.viewmodels.LibraryArtistsViewModel
@@ -42,11 +42,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +59,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import com.caohaidang.edward.music.constants.ArtistSortType
@@ -81,16 +77,10 @@ import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.constants.AlbumSortType
-import com.caohaidang.edward.music.constants.GridCellSize
-import com.caohaidang.edward.music.constants.GridCellSizeKey
-import com.caohaidang.edward.music.constants.GridThumbnailHeight
 import com.caohaidang.edward.music.constants.LibraryTabViewTypeKey
 import com.caohaidang.edward.music.constants.LibraryViewType
-import com.caohaidang.edward.music.constants.ListThumbnailSize
 import com.caohaidang.edward.music.constants.PlaylistSortType
-import com.caohaidang.edward.music.constants.SmallGridThumbnailHeight
 import com.caohaidang.edward.music.constants.SongSortType
-import com.caohaidang.edward.music.constants.ThumbnailCornerRadius
 import com.caohaidang.edward.music.db.entities.Album
 import com.caohaidang.edward.music.db.entities.Playlist
 import com.caohaidang.edward.music.db.entities.PlaylistEntity
@@ -98,16 +88,9 @@ import com.caohaidang.edward.music.db.entities.Song
 import com.caohaidang.edward.music.extensions.toMediaItem
 import com.caohaidang.edward.music.extensions.togglePlayPause
 import com.caohaidang.edward.music.playback.queues.ListQueue
-import com.caohaidang.edward.music.ui.component.AlbumGridItem
-import com.caohaidang.edward.music.ui.component.AlbumListItem
-import com.caohaidang.edward.music.ui.component.ChipsRow
 import com.caohaidang.edward.music.ui.component.EmptyPlaceholder
 import com.caohaidang.edward.music.ui.component.LocalMenuState
-import com.caohaidang.edward.music.ui.component.PlaylistGridItem
-import com.caohaidang.edward.music.ui.component.PlaylistListItem
 import com.caohaidang.edward.music.ui.component.PlaylistThumbnail
-import com.caohaidang.edward.music.ui.component.SongGridItem
-import com.caohaidang.edward.music.ui.component.SongListItem
 import com.caohaidang.edward.music.ui.component.TextFieldDialog
 import com.caohaidang.edward.music.ui.menu.AlbumMenu
 import com.caohaidang.edward.music.ui.menu.PlaylistMenu
@@ -210,8 +193,7 @@ private fun GlassPill(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
             .height(38.dp)
-            .glassCard(CircleShape)
-            .clip(CircleShape)
+            .liquidGlass(CircleShape, elevation = 6.dp)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp),
         content = content
@@ -236,7 +218,7 @@ private fun PillIconButton(@androidx.annotation.DrawableRes icon: Int, onClick: 
 private fun SectionHeader(
     navController: NavController,
     title: String,
-    actions: @Composable RowScope.() -> Unit,
+    actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -250,7 +232,7 @@ private fun SectionHeader(
                 Icon(painterResource(R.drawable.arrow_back), null, Modifier.size(18.dp))
                 Text("Thư viện", style = MaterialTheme.typography.labelLarge)
             }
-            GlassPill(content = actions)
+            if (actions != null) GlassPill(content = actions)
         }
         Text(
             text = title,
@@ -258,25 +240,6 @@ private fun SectionHeader(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 10.dp)
         )
-    }
-}
-
-/** Rounded cover used in the stacked collages; falls back to a flat tone while the image is missing. */
-@Composable
-private fun StackCover(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(18.dp)) {
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        if (url != null) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 
@@ -294,8 +257,7 @@ private fun LibraryHero(
         modifier = Modifier
             .fillMaxWidth()
             .height(160.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(scheme.primaryContainer)
+            .liquidGlass(RoundedCornerShape(28.dp), tint = scheme.primaryContainer, tintAlpha = 0.7f, elevation = 10.dp)
             .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(start = 20.dp, top = 18.dp)) {
@@ -370,60 +332,6 @@ private fun LibraryHero(
     }
 }
 
-/** Pastel colours of the bento tiles; every kind of tile keeps its own hue. */
-private enum class BentoTone { PLAYLIST, ARTIST, ALBUM }
-
-private class TileColors(val container: Color, val content: Color)
-
-@Composable
-private fun tileColors(tone: BentoTone): TileColors {
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return when (tone) {
-        BentoTone.PLAYLIST ->
-            if (dark) TileColors(Color(0xFF4A2B1D), Color(0xFFFFDCCB))
-            else TileColors(Color(0xFFFFE2D4), Color(0xFF4A1F0D))
-
-        BentoTone.ARTIST ->
-            if (dark) TileColors(Color(0xFF1D4631), Color(0xFFC9F3DB))
-            else TileColors(Color(0xFFD6F3E2), Color(0xFF0B3B25))
-
-        BentoTone.ALBUM ->
-            if (dark) TileColors(Color(0xFF342A5E), Color(0xFFE4DDFF))
-            else TileColors(Color(0xFFE6DFFF), Color(0xFF2A1A5C))
-    }
-}
-
-/** Up to three covers fanned out and slightly tilted, same look as the "Yêu thích" tile. */
-@Composable
-private fun CoverFan(
-    covers: List<String?>,
-    coverSize: Dp,
-    step: Dp,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(18.dp),
-) {
-    val tilts = listOf(-12f, -4f, 8f)
-    val items = covers.take(3).ifEmpty { listOf(null, null, null) }
-    Box(
-        modifier = modifier.size(
-            width = coverSize + step * (items.size - 1),
-            height = coverSize + 12.dp
-        )
-    ) {
-        items.forEachIndexed { i, url ->
-            StackCover(
-                url = url,
-                shape = shape,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .offset(x = step * i, y = ((i % 2) * 8).dp)
-                    .size(coverSize)
-                    .rotate(tilts[i % tilts.size])
-            )
-        }
-    }
-}
-
 /** Collection tile (Playlist / Nghệ sĩ / Album): own colour, title at the bottom, tilted covers in the corner. */
 @Composable
 private fun CollectionCard(
@@ -441,8 +349,7 @@ private fun CollectionCard(
     val colors = tileColors(tone)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(colors.container)
+            .liquidGlass(RoundedCornerShape(28.dp), tint = colors.container, tintAlpha = 0.62f, elevation = 10.dp)
             .clickable(onClick = onClick)
     ) {
         Column(
@@ -476,8 +383,7 @@ private fun CollectionCard(
 
 private val RecentCoverSize = 76.dp
 
-/** Row of "Mới thêm gần đây": a coloured card with a big cover on the left. */
-@OptIn(ExperimentalFoundationApi::class)
+/** Row of "Mới thêm gần đây": a glass card with a big cover on the left. */
 @Composable
 private fun RecentRow(
     typeLabel: String,
@@ -489,66 +395,24 @@ private fun RecentRow(
     onLongClick: () -> Unit,
     cover: @Composable () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(colors.container)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(10.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(RecentCoverSize)
-                .clip(RoundedCornerShape(18.dp))
-                .background(colors.content.copy(alpha = 0.12f))
-        ) {
-            cover()
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = typeLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.content.copy(alpha = 0.65f),
-                maxLines = 1
+    GlassRow(
+        title = title,
+        subtitle = subtitle,
+        colors = colors,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        typeLabel = typeLabel,
+        coverSize = RecentCoverSize,
+        trailing = {
+            GlassIconButton(
+                icon = trailingIcon,
+                iconColor = colors.content,
+                fill = colors.content,
+                fillAlpha = 0.12f
             )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.content,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.content.copy(alpha = 0.75f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(colors.content.copy(alpha = 0.12f))
-        ) {
-            Icon(
-                painter = painterResource(trailingIcon),
-                contentDescription = null,
-                tint = colors.content,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
+        },
+        cover = cover
+    )
 }
 
 /** Library home: a plain list of sections followed by what was added recently. */
@@ -603,10 +467,7 @@ fun UnifiedLibraryScreen(
 
     val playlistColors = tileColors(BentoTone.PLAYLIST)
     val albumColors = tileColors(BentoTone.ALBUM)
-    val songColors = TileColors(
-        container = MaterialTheme.colorScheme.primaryContainer,
-        content = MaterialTheme.colorScheme.onPrimaryContainer
-    )
+    val songColors = tileColors(BentoTone.SONG)
 
     // A few of each kind, interleaved, so the list reads as "recently added".
     val recent: List<Any> = remember(likedAlbums, likedSongs, playlists) {
@@ -622,6 +483,7 @@ fun UnifiedLibraryScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize().liquidBackdrop()) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -645,8 +507,7 @@ fun UnifiedLibraryScreen(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(40.dp)
-                            .glassCard(CircleShape)
-                            .clip(CircleShape)
+                            .liquidGlass(CircleShape, elevation = 6.dp)
                             .clickable { showMoreMenu = true }
                     ) {
                         Icon(painterResource(R.drawable.more_horiz), contentDescription = null)
@@ -873,9 +734,10 @@ fun UnifiedLibraryScreen(
             }
         }
     }
+    }
 }
 
-/** One page of the library (liked albums, liked songs, playlists), styled like the library home. */
+/** One page of the library (liked songs, albums, playlists) as liquid-glass rows and cards. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibrarySectionScreen(
@@ -913,8 +775,15 @@ fun LibrarySectionScreen(
 
     // List / grid choice is remembered (shared by albums, songs and playlists).
     var viewType by rememberEnumPreference(LibraryTabViewTypeKey, LibraryViewType.GRID)
-    val gridCellSize by rememberEnumPreference(GridCellSizeKey, GridCellSize.SMALL)
     val isGrid = viewType == LibraryViewType.GRID
+
+    val colors = tileColors(
+        when (section) {
+            LibrarySection.SONGS -> BentoTone.SONG
+            LibrarySection.ALBUMS -> BentoTone.ALBUM
+            else -> BentoTone.PLAYLIST
+        }
+    )
 
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
@@ -969,15 +838,10 @@ fun LibrarySectionScreen(
         }
     }
 
-    val cellMinSize = when (gridCellSize) {
-        GridCellSize.SMALL -> SmallGridThumbnailHeight
-        GridCellSize.BIG -> GridThumbnailHeight
-    } + 24.dp
-
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().liquidBackdrop()) {
         LazyVerticalGrid(
             state = gridState,
-            columns = if (isGrid) GridCells.Adaptive(minSize = cellMinSize) else GridCells.Fixed(1),
+            columns = GridCells.Fixed(if (isGrid) 2 else 1),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier.fillMaxSize()
         ) {
@@ -1004,28 +868,24 @@ fun LibrarySectionScreen(
                     when (section) {
                         LibrarySection.SONGS -> {
                             if (likedSongs.isNotEmpty()) {
-                                FilledTonalButton(
-                                    onClick = { playSongs(likedSongs, 0) },
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.play),
-                                        contentDescription = stringResource(R.string.play),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                FilledTonalButton(
-                                    onClick = { playSongs(likedSongs.shuffled(), 0) },
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.shuffle),
-                                        contentDescription = stringResource(R.string.shuffle),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
+                                GlassIconButton(
+                                    icon = R.drawable.play,
+                                    iconColor = colors.content,
+                                    fill = colors.container,
+                                    fillAlpha = 0.8f,
+                                    size = 48.dp,
+                                    contentDescription = stringResource(R.string.play),
+                                    onClick = { playSongs(likedSongs, 0) }
+                                )
+                                GlassIconButton(
+                                    icon = R.drawable.shuffle,
+                                    iconColor = colors.content,
+                                    fill = colors.container,
+                                    fillAlpha = 0.8f,
+                                    size = 48.dp,
+                                    contentDescription = stringResource(R.string.shuffle),
+                                    onClick = { playSongs(likedSongs.shuffled(), 0) }
+                                )
                             }
                             Spacer(Modifier.weight(1f))
                             SortMenuButton(selected = songsSort, onSelected = { songsSort = it })
@@ -1056,9 +916,8 @@ fun LibrarySectionScreen(
                 LibrarySection.ALBUMS -> albumsContent(
                     albums = likedAlbums,
                     isGrid = isGrid,
+                    colors = colors,
                     activeAlbumId = mediaMetadata?.album?.id,
-                    isPlaying = isPlaying,
-                    coroutineScope = coroutineScope,
                     onOpen = { navController.navigate("album/${it.id}") },
                     onOptions = showAlbumMenu,
                     onLongPress = {
@@ -1070,6 +929,7 @@ fun LibrarySectionScreen(
                 LibrarySection.SONGS -> songsContent(
                     songs = likedSongs,
                     isGrid = isGrid,
+                    colors = colors,
                     activeSongId = mediaMetadata?.id,
                     isPlaying = isPlaying,
                     onPlay = { song, index ->
@@ -1089,6 +949,7 @@ fun LibrarySectionScreen(
                 LibrarySection.PLAYLISTS -> playlistsContent(
                     playlists = playlists,
                     isGrid = isGrid,
+                    colors = colors,
                     onCreate = { showCreatePlaylistDialog = true },
                     onOpen = { navController.navigate("local_playlist/${it.id}") },
                     onOptions = showPlaylistMenu,
@@ -1104,7 +965,7 @@ fun LibrarySectionScreen(
     }
 }
 
-/** Artists page: round avatars in a plain list with chevrons, keeping the library/liked filter. */
+/** Artists page: round glass avatars in a three-column grid, keeping the library/liked filter. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LibraryArtistsSection(
@@ -1116,82 +977,52 @@ private fun LibraryArtistsSection(
     val coroutineScope = rememberCoroutineScope()
     var filter by rememberEnumPreference(ArtistFilterKey, ArtistFilter.LIBRARY)
     val artists by viewModel.allArtists.collectAsState()
+    val colors = tileColors(BentoTone.ARTIST)
 
-    LazyColumn(
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        item(key = "header") {
-            SectionHeader(navController = navController, title = LibrarySection.ARTISTS.title) {}
-        }
-        item(key = "filter") {
-            ChipsRow(
-                chips = listOf(
-                    ArtistFilter.LIBRARY to stringResource(R.string.filter_library),
-                    ArtistFilter.LIKED to stringResource(R.string.filter_liked)
-                ),
-                currentValue = filter,
-                onValueUpdate = { filter = it }
-            )
-        }
-        artists?.let { list ->
-            if (list.isEmpty()) {
-                item(key = "empty") {
-                    EmptyPlaceholder(
-                        icon = R.drawable.artist,
-                        text = stringResource(R.string.library_artist_empty)
-                    )
-                }
+    Box(modifier = Modifier.fillMaxSize().liquidBackdrop()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                SectionHeader(navController = navController, title = LibrarySection.ARTISTS.title)
             }
-            items(items = list, key = { it.id }) { artist ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { navController.navigate("artist/${artist.id}") },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    ArtistMenu(
-                                        originalArtist = artist,
-                                        coroutineScope = coroutineScope,
-                                        onDismiss = menuState::dismiss
-                                    )
-                                }
-                            }
-                        )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                    ) {
-                        AsyncImage(
-                            model = artist.artist.thumbnailUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Text(
-                            text = artist.artist.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            painter = painterResource(R.drawable.navigate_next),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            item(key = "filter", span = { GridItemSpan(maxLineSpan) }) {
+                GlassChipRow(
+                    options = listOf(
+                        ArtistFilter.LIBRARY to stringResource(R.string.filter_library),
+                        ArtistFilter.LIKED to stringResource(R.string.filter_liked)
+                    ),
+                    selected = filter,
+                    colors = colors,
+                    onSelect = { filter = it }
+                )
+            }
+            artists?.let { list ->
+                if (list.isEmpty()) {
+                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyPlaceholder(
+                            icon = R.drawable.artist,
+                            text = stringResource(R.string.library_artist_empty)
                         )
                     }
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 74.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant
+                }
+                items(items = list, key = { it.id }) { artist ->
+                    ArtistBubble(
+                        artist = artist,
+                        colors = colors,
+                        onClick = { navController.navigate("artist/${artist.id}") },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                ArtistMenu(
+                                    originalArtist = artist,
+                                    coroutineScope = coroutineScope,
+                                    onDismiss = menuState::dismiss
+                                )
+                            }
+                        }
                     )
                 }
             }
@@ -1199,13 +1030,72 @@ private fun LibraryArtistsSection(
     }
 }
 
+/** Round avatar on a glass ring with the name underneath. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ArtistBubble(
+    artist: Artist,
+    colors: TileColors,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .liquidGlass(CircleShape, tint = colors.container, tintAlpha = 0.55f, elevation = 0.dp)
+                .padding(4.dp)
+        ) {
+            AsyncImage(
+                model = artist.artist.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+            )
+        }
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = artist.artist.name,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (artist.songCount > 0) {
+            Text(
+                text = "${artist.songCount} bài",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** Left cell gets a wider left margin, right cell a wider right one, so the grid lines up with the 16dp page margin. */
+private fun cellPadding(cell: Int) =
+    if (cell % 2 == 0) PaddingValues(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp)
+    else PaddingValues(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
+
+private val SectionCoverSize = 64.dp
+
 @OptIn(ExperimentalFoundationApi::class)
 private fun LazyGridScope.albumsContent(
     albums: List<Album>,
     isGrid: Boolean,
+    colors: TileColors,
     activeAlbumId: String?,
-    isPlaying: Boolean,
-    coroutineScope: kotlinx.coroutines.CoroutineScope,
     onOpen: (Album) -> Unit,
     onOptions: (Album) -> Unit,
     onLongPress: (Album) -> Unit,
@@ -1220,36 +1110,51 @@ private fun LazyGridScope.albumsContent(
         return
     }
 
-    items(items = albums, key = { "album_${it.id}" }) { album ->
+    items(count = albums.size, key = { "album_${albums[it].id}" }) { index ->
+        val album = albums[index]
+        val artistNames = album.artists.joinToString { it.name }
+        val subtitle = listOfNotNull(artistNames.ifEmpty { null }, album.album.year?.toString())
+            .joinToString(" · ")
+        val active = album.id == activeAlbumId
+        val cover: @Composable () -> Unit = {
+            AsyncImage(
+                model = album.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
         if (isGrid) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                AlbumGridItem(
-                    album = album,
-                    isActive = album.id == activeAlbumId,
-                    isPlaying = isPlaying,
-                    coroutineScope = coroutineScope,
-                    fillMaxWidth = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onOpen(album) },
-                            onLongClick = { onLongPress(album) }
-                        )
-                )
-                GridOptionsButton(
-                    onClick = { onOptions(album) },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                )
-            }
+            GlassCoverCard(
+                title = album.album.title,
+                subtitle = subtitle,
+                colors = colors,
+                highlighted = active,
+                onClick = { onOpen(album) },
+                onLongClick = { onLongPress(album) },
+                onMore = { onOptions(album) },
+                modifier = Modifier.padding(cellPadding(index)),
+                cover = cover
+            )
         } else {
-            AlbumListItem(
-                album = album,
-                isActive = album.id == activeAlbumId,
-                isPlaying = isPlaying,
-                trailingContent = { ListOptionsButton { onOptions(album) } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(album) }
+            GlassRow(
+                title = album.album.title,
+                subtitle = subtitle,
+                colors = colors,
+                coverSize = SectionCoverSize,
+                highlighted = active,
+                onClick = { onOpen(album) },
+                onLongClick = { onLongPress(album) },
+                trailing = {
+                    GlassIconButton(
+                        icon = R.drawable.more_vert,
+                        iconColor = colors.content,
+                        fill = colors.content,
+                        fillAlpha = 0.12f,
+                        onClick = { onOptions(album) }
+                    )
+                },
+                cover = cover
             )
         }
     }
@@ -1259,6 +1164,7 @@ private fun LazyGridScope.albumsContent(
 private fun LazyGridScope.songsContent(
     songs: List<Song>,
     isGrid: Boolean,
+    colors: TileColors,
     activeSongId: String?,
     isPlaying: Boolean,
     onPlay: (Song, Int) -> Unit,
@@ -1275,42 +1181,66 @@ private fun LazyGridScope.songsContent(
         return
     }
 
-    items(
-        count = songs.size,
-        key = { "song_${songs[it].id}" }
-    ) { index ->
+    items(count = songs.size, key = { "song_${songs[it].id}" }) { index ->
         val song = songs[index]
-        if (isGrid) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                SongGridItem(
-                    song = song,
-                    isActive = song.id == activeSongId,
-                    isPlaying = isPlaying,
-                    fillMaxWidth = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onPlay(song, index) },
-                            onLongClick = { onLongPress(song) }
+        val active = song.id == activeSongId
+        val subtitle = song.artists.joinToString { it.name }
+        val cover: @Composable () -> Unit = {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = song.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (active) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.40f))
+                    ) {
+                        Icon(
+                            painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
-                )
-                GridOptionsButton(
-                    onClick = { onOptions(song) },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                )
+                    }
+                }
             }
+        }
+        if (isGrid) {
+            GlassCoverCard(
+                title = song.song.title,
+                subtitle = subtitle,
+                colors = colors,
+                highlighted = active,
+                onClick = { onPlay(song, index) },
+                onLongClick = { onLongPress(song) },
+                onMore = { onOptions(song) },
+                modifier = Modifier.padding(cellPadding(index)),
+                cover = cover
+            )
         } else {
-            SongListItem(
-                song = song,
-                isActive = song.id == activeSongId,
-                isPlaying = isPlaying,
-                trailingContent = { ListOptionsButton { onOptions(song) } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onPlay(song, index) },
-                        onLongClick = { onLongPress(song) }
+            GlassRow(
+                title = song.song.title,
+                subtitle = subtitle,
+                colors = colors,
+                coverSize = SectionCoverSize,
+                highlighted = active,
+                onClick = { onPlay(song, index) },
+                onLongClick = { onLongPress(song) },
+                trailing = {
+                    GlassIconButton(
+                        icon = R.drawable.more_vert,
+                        iconColor = colors.content,
+                        fill = colors.content,
+                        fillAlpha = 0.12f,
+                        onClick = { onOptions(song) }
                     )
+                },
+                cover = cover
             )
         }
     }
@@ -1320,13 +1250,39 @@ private fun LazyGridScope.songsContent(
 private fun LazyGridScope.playlistsContent(
     playlists: List<Playlist>,
     isGrid: Boolean,
+    colors: TileColors,
     onCreate: () -> Unit,
     onOpen: (Playlist) -> Unit,
     onOptions: (Playlist) -> Unit,
     onLongPress: (Playlist) -> Unit,
 ) {
     item(key = "create_playlist") {
-        if (isGrid) CreatePlaylistGridCell(onCreate) else CreatePlaylistListRow(onCreate)
+        if (isGrid) {
+            CreatePlaylistCard(
+                colors = colors,
+                onClick = onCreate,
+                modifier = Modifier.padding(cellPadding(0))
+            )
+        } else {
+            GlassRow(
+                title = "Tạo playlist",
+                subtitle = "Tạo danh sách phát mới",
+                colors = colors,
+                coverSize = SectionCoverSize,
+                onClick = onCreate,
+                onLongClick = {},
+                cover = {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            painter = painterResource(R.drawable.add),
+                            contentDescription = null,
+                            tint = colors.content,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            )
+        }
     }
 
     if (playlists.isEmpty()) {
@@ -1339,129 +1295,56 @@ private fun LazyGridScope.playlistsContent(
         return
     }
 
-    items(items = playlists, key = { "playlist_${it.id}" }) { playlist ->
+    items(count = playlists.size, key = { "playlist_${playlists[it].id}" }) { index ->
+        val playlist = playlists[index]
+        val subtitle = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount)
         if (isGrid) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                PlaylistGridItem(
-                    playlist = playlist,
-                    fillMaxWidth = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { onOpen(playlist) },
-                            onLongClick = { onLongPress(playlist) }
-                        )
-                )
-                GridOptionsButton(
-                    onClick = { onOptions(playlist) },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                )
-            }
+            GlassCoverCard(
+                title = playlist.playlist.name,
+                subtitle = subtitle,
+                colors = colors,
+                onClick = { onOpen(playlist) },
+                onLongClick = { onLongPress(playlist) },
+                onMore = { onOptions(playlist) },
+                // the "create" card takes the first cell, so playlists start one cell later
+                modifier = Modifier.padding(cellPadding(index + 1)),
+                cover = { PlaylistCardCover(playlist.displayThumbnails, colors) }
+            )
         } else {
-            PlaylistListItem(
-                playlist = playlist,
-                trailingContent = { ListOptionsButton { onOptions(playlist) } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(playlist) }
+            GlassRow(
+                title = playlist.playlist.name,
+                subtitle = subtitle,
+                colors = colors,
+                coverSize = SectionCoverSize,
+                onClick = { onOpen(playlist) },
+                onLongClick = { onLongPress(playlist) },
+                trailing = {
+                    GlassIconButton(
+                        icon = R.drawable.more_vert,
+                        iconColor = colors.content,
+                        fill = colors.content,
+                        fillAlpha = 0.12f,
+                        onClick = { onOptions(playlist) }
+                    )
+                },
+                cover = {
+                    PlaylistThumbnail(
+                        thumbnails = playlist.displayThumbnails,
+                        size = SectionCoverSize,
+                        placeHolder = {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(SectionCoverSize)) {
+                                Icon(
+                                    painter = painterResource(R.drawable.queue_music),
+                                    contentDescription = null,
+                                    tint = colors.content,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(0.dp)
+                    )
+                }
             )
         }
-    }
-}
-
-@Composable
-private fun ListOptionsButton(onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Icon(
-            painter = painterResource(R.drawable.more_vert),
-            contentDescription = null
-        )
-    }
-}
-
-@Composable
-private fun GridOptionsButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .padding(top = 16.dp, end = 16.dp)
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onClick)
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.more_vert),
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(18.dp)
-        )
-    }
-}
-
-@Composable
-private fun CreatePlaylistGridCell(onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(12.dp)
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(ThumbnailCornerRadius))
-                .background(MaterialTheme.colorScheme.secondaryContainer)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.add),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(40.dp)
-            )
-        }
-        Spacer(Modifier.size(6.dp))
-        Text(
-            text = "Tạo playlist",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun CreatePlaylistListRow(onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(ListThumbnailSize)
-                .clip(RoundedCornerShape(ThumbnailCornerRadius))
-                .background(MaterialTheme.colorScheme.secondaryContainer)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.add),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = "Tạo playlist",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold
-        )
     }
 }

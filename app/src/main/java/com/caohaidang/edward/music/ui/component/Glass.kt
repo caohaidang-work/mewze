@@ -129,3 +129,85 @@ fun Modifier.glassAmbient(): Modifier {
         )
     }
 }
+
+/**
+ * "Liquid glass" panel: a translucent tinted body with a soft specular highlight in the top-left corner,
+ * light pooling along the bottom edge and a bright rim that fades through the middle and comes back
+ * at the opposite corner. Looks best on top of [liquidBackdrop] or a cover image.
+ */
+@Composable
+fun Modifier.liquidGlass(
+    shape: Shape,
+    tint: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    tintAlpha: Float = 0.45f,
+    elevation: Dp = 8.dp,
+): Modifier {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val rim = Brush.linearGradient(
+        0f to Color.White.copy(alpha = if (dark) 0.60f else 0.95f),
+        0.38f to Color.White.copy(alpha = if (dark) 0.05f else 0.18f),
+        0.62f to Color.White.copy(alpha = if (dark) 0.05f else 0.18f),
+        1f to Color.White.copy(alpha = if (dark) 0.38f else 0.75f),
+    )
+    val highlight = Color.White.copy(alpha = if (dark) 0.22f else 0.55f)
+    val pool = Color.White.copy(alpha = if (dark) 0.06f else 0.16f)
+
+    return this
+        .then(
+            if (elevation > 0.dp) {
+                Modifier.shadow(
+                    elevation = elevation,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = tint.copy(alpha = 0.40f),
+                    spotColor = Color.Black.copy(alpha = if (dark) 0.35f else 0.14f),
+                )
+            } else Modifier
+        )
+        .clip(shape)
+        .background(tint.copy(alpha = tintAlpha))
+        .drawBehind {
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(highlight, Color.Transparent),
+                    center = Offset(size.width * 0.15f, 0f),
+                    radius = size.maxDimension * 0.75f
+                )
+            )
+            drawRect(
+                Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, pool),
+                    startY = size.height * 0.55f,
+                    endY = size.height
+                )
+            )
+        }
+        .border(1.dp, rim, shape)
+}
+
+/** Soft colour blobs for a screen background, so the glass panels above it have something to refract. */
+@Composable
+fun Modifier.liquidBackdrop(): Modifier {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    val a = if (dark) 0.34f else 0.55f
+    val pink = scheme.primaryContainer
+    val lavender = if (dark) Color(0xFF6E52C8) else Color(0xFFC9B8FF)
+    val mint = if (dark) Color(0xFF2E8F69) else Color(0xFFA6E8C9)
+    val peach = if (dark) Color(0xFFC77848) else Color(0xFFFFC9A8)
+
+    return this.drawBehind {
+        val r = size.maxDimension
+        fun blob(color: Color, x: Float, y: Float, radius: Float) = drawRect(
+            Brush.radialGradient(
+                colors = listOf(color.copy(alpha = a), Color.Transparent),
+                center = Offset(size.width * x, size.height * y),
+                radius = r * radius
+            )
+        )
+        blob(pink, 0.05f, 0.06f, 0.55f)
+        blob(lavender, 1.00f, 0.30f, 0.50f)
+        blob(mint, 0.00f, 0.62f, 0.50f)
+        blob(peach, 1.00f, 0.92f, 0.55f)
+    }
+}
