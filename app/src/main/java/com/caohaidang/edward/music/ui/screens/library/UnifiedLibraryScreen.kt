@@ -19,6 +19,8 @@ import coil.compose.AsyncImage
 import com.caohaidang.edward.music.constants.ArtistFilter
 import com.caohaidang.edward.music.constants.ArtistFilterKey
 import com.caohaidang.edward.music.ui.component.glassCard
+import com.caohaidang.edward.music.ui.component.glassAmbient
+import androidx.compose.foundation.border
 import com.caohaidang.edward.music.ui.menu.ArtistMenu
 import com.caohaidang.edward.music.ui.screens.Screens
 import com.caohaidang.edward.music.viewmodels.LibraryArtistsViewModel
@@ -198,6 +200,14 @@ private fun SortMenuButton(
     }
 }
 
+/** Liquid-glass tile: a soft colour wash under a frosted card with a bright rim. */
+@Composable
+private fun Modifier.glassTile(shape: Shape, tint: Color, washAlpha: Float = 0.50f, tintAlpha: Float = 0.28f): Modifier =
+    this
+        .clip(shape)
+        .background(tint.copy(alpha = washAlpha))
+        .glassCard(shape, tintAlpha = tintAlpha)
+
 /** Small rounded "glass" capsule used for the header buttons (back, view toggle, more). */
 @Composable
 private fun GlassPill(
@@ -268,6 +278,7 @@ private fun StackCover(url: String?, modifier: Modifier = Modifier, shape: Shape
         modifier = modifier
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, Color.White.copy(alpha = 0.35f), shape)
     ) {
         if (url != null) {
             AsyncImage(
@@ -294,8 +305,7 @@ private fun LibraryHero(
         modifier = Modifier
             .fillMaxWidth()
             .height(160.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(scheme.primaryContainer)
+            .glassTile(RoundedCornerShape(28.dp), scheme.primaryContainer, washAlpha = 0.60f, tintAlpha = 0.22f)
             .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(start = 20.dp, top = 18.dp)) {
@@ -441,8 +451,7 @@ private fun CollectionCard(
     val colors = tileColors(tone)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(colors.container)
+            .glassTile(RoundedCornerShape(28.dp), colors.container)
             .clickable(onClick = onClick)
     ) {
         Column(
@@ -494,8 +503,7 @@ private fun RecentRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(colors.container)
+            .glassTile(RoundedCornerShape(26.dp), colors.container, washAlpha = 0.42f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp)
     ) {
@@ -625,7 +633,7 @@ fun UnifiedLibraryScreen(
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().glassAmbient()
     ) {
         item(key = "title", span = { GridItemSpan(maxLineSpan) }) {
             Row(
@@ -974,7 +982,7 @@ fun LibrarySectionScreen(
         GridCellSize.BIG -> GridThumbnailHeight
     } + 24.dp
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().glassAmbient()) {
         LazyVerticalGrid(
             state = gridState,
             columns = if (isGrid) GridCells.Adaptive(minSize = cellMinSize) else GridCells.Fixed(1),
@@ -1119,7 +1127,7 @@ private fun LibraryArtistsSection(
 
     LazyColumn(
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().glassAmbient()
     ) {
         item(key = "header") {
             SectionHeader(navController = navController, title = LibrarySection.ARTISTS.title) {}
