@@ -36,6 +36,10 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # Never sign and publish a build whose tests fail (a bad migration would crash every user's app).
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest :innertube:test :kugou:test :lrclib:test --stacktrace
+
       - name: Decode keystore
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}

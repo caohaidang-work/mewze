@@ -94,7 +94,7 @@ abstract class InternalDatabase : RoomDatabase() {
         fun newInstance(context: Context): MusicDatabase =
             MusicDatabase(
                 delegate = Room.databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(*MANUAL_MIGRATIONS)
                     .build()
             )
     }
@@ -367,3 +367,11 @@ class Migration11To12 : AutoMigrationSpec {
         db.query("CREATE INDEX IF NOT EXISTS `index_song_albumId` ON `song` (`albumId`)")
     }
 }
+
+/**
+ * Every hand-written migration, in one place. MusicDatabase.newInstance and MigrationTest both use this
+ * list, so a migration added here is automatically covered by the test. (Auto-migrations are declared on
+ * the @Database annotation and are picked up by Room itself.)
+ * Keep this declaration BELOW the individual migrations: top-level properties initialise in file order.
+ */
+val MANUAL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_12_13, MIGRATION_13_14)

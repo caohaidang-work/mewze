@@ -1,12 +1,21 @@
 name: Build debug APK
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - '**'
     paths-ignore:
       - 'README.md'
       - 'assets/**'
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older run.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -23,6 +32,20 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x gradlew
+
+      # Unit tests first: sync logic (JVM), Room migrations (Robolectric) and snapshot compatibility.
+      # Network-dependent tests are @Ignore'd, so this is deterministic.
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest :innertube:test :kugou:test :lrclib:test --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
 
       - name: Build debug APK
         env:

@@ -418,23 +418,6 @@ class LibrarySyncManager @Inject constructor(
         }
     }
 
-    /** Counts consecutive syncs in which an item was missing remotely; see [SyncSnapshot.missing]. */
-    private class MissingTracker(private val old: Map<String, Int>, private val prefix: String) {
-        val next = mutableMapOf<String, Int>()
-
-        /** Records one more absence of [id]; true once it has been absent [needed] times in a row. */
-        fun confirmed(id: String, needed: Int = MISSING_SYNCS_TO_REMOVE): Boolean {
-            val n = (old[prefix + id] ?: 0) + 1
-            next[prefix + id] = n
-            return n >= needed
-        }
-
-        /** The remote list looked unreliable this time: keep earlier counts, add nothing. */
-        fun hold(id: String) {
-            old[prefix + id]?.let { next[prefix + id] = it }
-        }
-    }
-
     private data class LikedResult(
         val remoteCount: Int,
         val localCount: Int,
@@ -481,28 +464,23 @@ class LibrarySyncManager @Inject constructor(
             Log.w(TAG, "danh sách thích không đầy đủ: ${remoteIds.size}/${fetched.expectedCount}")
         }
 
-        // Pending likes: drop the ones that arrived (or that the user has since undone).
-        val pending = old.pendingLikes.filterKeys { it in localLiked && it !in remoteIds }.toMutableMap()
-        val undonePending = old.pendingLikes.keys.filter { it !in localLiked && it in remoteIds }
-
-        val tracker = MissingTracker(old.missing, "l:")
-        val addLocal = (remoteIds - localLiked) - last - old.pendingLikes.keys
-        val unlikeRemote = ((remoteIds intersect last) - localLiked) + undonePending
-        val likeRemote = ((localLiked - remoteIds) - last)
-            .filter { id -> pending[id]?.let { now - it >= PENDING_REPUSH_MS } ?: true }
-
-        // Liked on both sides at the last sync but missing now: unlike locally only when it is confirmed.
-        val absent = (localLiked intersect last) - remoteIds
-        val massRemoval = absent.size > maxOf(MASS_REMOVAL_MIN, last.size / 4)
-        val unlikeLocal = mutableSetOf<String>()
-        absent.forEach { id ->
-            if (!listTrusted) tracker.hold(id)
-            else if (tracker.confirmed(id, if (massRemoval) MISSING_SYNCS_MASS_REMOVE else MISSING_SYNCS_TO_REMOVE)) unlikeLocal += id
+        // The "what should change" decisions are pure and unit-tested: see planLikedSync (SyncLogic.kt).
+        val plan = planLikedSync(
+            last = last,
+            pendingLikes = old.pendingLikes,
+            missing = old.missing,
+            remoteIds = remoteIds,
+            localLiked = localLiked,
+            listTrusted = listTrusted,
+            now = now,
+        )
+        val addLocal = plan.addLocal
+        val unlikeLocal = plan.unlikeLocal
+        val likeRemote = plan.likeRemote
+        val unlikeRemote = plan.unlikeRemote
+        if (plan.massRemovalHeld) {
+            warnings += "${plan.absent.size} bài thích biến mất khỏi YouTube cùng lúc; chờ xác nhận thêm trước khi xoá trên máy."
         }
-        if (massRemoval && listTrusted && unlikeLocal.isEmpty()) {
-            warnings += "${absent.size} bài thích biến mất khỏi YouTube cùng lúc; chờ xác nhận thêm trước khi xoá trên máy."
-        }
-        unlikeLocal.forEach { tracker.next.remove("l:$it") }
 
         val stamp = LocalDateTime.now()
         database.runInTransaction {
@@ -546,21 +524,17 @@ class LibrarySyncManager @Inject constructor(
             else warnings += "Còn thay đổi chưa đẩy lên YouTube; sẽ tiếp tục ở lần đồng bộ sau."
         }
 
-        pushedOk.forEach { pending[it] = now }
-
-        // "Synced" = seen on YouTube. Likes that are only locally unlike-pending stay in the snapshot
-        // until confirmed missing, otherwise they would be mistaken for brand-new likes.
-        val keptWhileAbsent = absent - unlikeLocal
-        val newSnapshot = (remoteIds - unlikedOk) + keptWhileAbsent
+        // "Synced" = seen on YouTube (see settleLiked): pushed likes wait in `pending` until they show up.
+        val settled = settleLiked(plan, remoteIds, pushedOk, unlikedOk, now)
         Log.d(TAG, "liked: remote=${remoteIds.size} local=${localLiked.size} last=${last.size} trusted=$listTrusted " +
                 "addLocal=${addLocal.size} unlikeLocal=${unlikeLocal.size} likeRemote=${likeRemote.size} " +
-                "unlikeRemote=${unlikeRemote.size} pending=${pending.size}")
+                "unlikeRemote=${unlikeRemote.size} pending=${settled.pending.size}")
         return LikedResult(
             remoteCount = remoteIds.size,
             localCount = localLiked.size,
-            newSnapshotIds = newSnapshot,
-            pending = pending,
-            missing = tracker.next,
+            newSnapshotIds = settled.snapshotIds,
+            pending = settled.pending,
+            missing = plan.missing,
             pulled = addLocal.size,
             unlikedLocally = unlikeLocal.size,
             pushed = pushedOk.size,
@@ -1032,11 +1006,7 @@ class LibrarySyncManager @Inject constructor(
     /** A playlist as downloaded; [expectedCount] is the song count YouTube shows in the header (if it could be read). */
     private class FetchedPlaylist(val songs: List<SongItem>, val expectedCount: Int?) {
         /** True when clearly fewer songs arrived than the header promises (truncated paging, stale page...). */
-        fun looksIncomplete(): Boolean {
-            val expected = expectedCount ?: return false
-            if (expected - songs.size < INCOMPLETE_MIN_GAP) return false
-            return songs.size < expected * INCOMPLETE_RATIO
-        }
+        fun looksIncomplete(): Boolean = isIncompleteList(expectedCount, songs.size)
     }
 
     /** Downloads every page of a playlist; any page that fails (after retries) fails the whole call, never a partial list. */
@@ -1088,15 +1058,15 @@ class LibrarySyncManager @Inject constructor(
         const val STEP_RETRY_DELAY_MS = 1_500L
         const val CALL_RETRIES = 2
         const val PLAYLIST_PREFETCH_PARALLELISM = 3
-        const val MISSING_SYNCS_TO_REMOVE = 2
-        const val MISSING_SYNCS_MASS_REMOVE = 4
-        const val MASS_REMOVAL_MIN = 10
+        const val MISSING_SYNCS_TO_REMOVE = SyncLimits.MISSING_SYNCS_TO_REMOVE
+        const val MISSING_SYNCS_MASS_REMOVE = SyncLimits.MISSING_SYNCS_MASS_REMOVE
+        const val MASS_REMOVAL_MIN = SyncLimits.MASS_REMOVAL_MIN
         const val MAX_LIKE_PUSH_PER_SYNC = 250
         const val PUSH_FAIL_STREAK = 5
         const val PUSH_PACING_MS = 150L
-        const val PENDING_REPUSH_MS = 6 * 60 * 60_000L
-        const val INCOMPLETE_MIN_GAP = 3
-        const val INCOMPLETE_RATIO = 0.8
+        const val PENDING_REPUSH_MS = SyncLimits.PENDING_REPUSH_MS
+        const val INCOMPLETE_MIN_GAP = SyncLimits.INCOMPLETE_MIN_GAP
+        const val INCOMPLETE_RATIO = SyncLimits.INCOMPLETE_RATIO
         val COUNT_REGEX = Regex("""\d[\d.,\u00A0\u202F ]*""")
         const val MAX_REORDER_MOVES = 60
         const val MAX_PAGES = 100

@@ -22,7 +22,9 @@ dữ liệu (lịch sử nghe, bài thích, playlist...).
 
 ## 2. Cho Gradle biết khóa ở đâu (làm một lần)
 
-Tạo file `keystore.properties` ở thư mục gốc dự án (file này đã nằm trong `.gitignore`):
+Sao chép `keystore.properties.example` thành `keystore.properties` ở thư mục gốc dự án rồi điền thông tin.
+File này nằm trong `.gitignore`. **Tuyệt đối không commit file này** (từng có một lần lỡ commit, xem mục 5).
+Gradle đọc nó làm giá trị dự phòng; biến môi trường `RELEASE_KEYSTORE_*` hoặc `local.properties` được ưu tiên hơn:
 
 ```properties
 storeFile=/duong/dan/toi/mewze.keystore
@@ -60,3 +62,13 @@ sao lưu trong app cũ, cài bản mới, rồi khôi phục (một lần).
    ```
 
    Dòng SHA-256 phải giống hệt giữa các lần phát hành.
+
+## 5. Nếu lỡ làm lộ mật khẩu keystore
+
+Xóa file khỏi git là **không đủ**, vì nó vẫn nằm trong lịch sử. Làm theo thứ tự:
+
+1. Đổi mật khẩu (không đổi khóa nên người dùng vẫn cập nhật đè được): `tools/rotate-keystore-password.sh /duong/dan/mewze.jks`
+2. Cập nhật GitHub Secrets `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`
+   (file keystore đã thay đổi nên phải mã hóa base64 lại).
+3. Xóa file khỏi toàn bộ lịch sử: `tools/purge-secret-history.sh https://github.com/<user>/<repo>.git`
+4. Yêu cầu GitHub Support xóa cache các commit cũ, và báo cho những ai đã fork repo.

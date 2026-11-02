@@ -1,5 +1,12 @@
 package com.caohaidang.edward.music.ui.screens.artist
 
+import com.caohaidang.edward.music.ui.component.GlassCircleButton
+import com.caohaidang.edward.music.ui.component.ImmersiveTheme
+import com.caohaidang.edward.music.ui.component.immersiveBackdrop
+import com.caohaidang.edward.music.ui.component.immersiveTopBarColors
+import com.caohaidang.edward.music.ui.component.rememberImageTint
+import com.caohaidang.edward.music.ui.component.MinimalSongListItem
+import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -94,6 +101,12 @@ fun ArtistSongsScreen(
     }
 
     val lazyListState = rememberLazyListState()
+    val tint = rememberImageTint(artist?.artist?.thumbnailUrl)
+    val transparentAppBar by remember {
+        derivedStateOf {
+            lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
+        }
+    }
 
     var inSelectMode by rememberSaveable { mutableStateOf(false) }
     val selection = rememberSaveable(
@@ -119,8 +132,9 @@ fun ArtistSongsScreen(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().immersiveBackdrop(tint)
     ) {
+        ImmersiveTheme {
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
@@ -169,7 +183,7 @@ fun ArtistSongsScreen(
                     }
                 }
 
-                SongListItem(
+                MinimalSongListItem(
                     song = song,
                     isActive = song.id == mediaMetadata?.id,
                     isPlaying = isPlaying,
@@ -226,6 +240,7 @@ fun ArtistSongsScreen(
                 )
             }
         }
+        }
 
         TopAppBar(
             title = {
@@ -244,15 +259,12 @@ fun ArtistSongsScreen(
                         )
                     }
                 } else {
-                    IconButton(
+                    GlassCircleButton(
+                        icon = R.drawable.arrow_back,
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null
-                        )
-                    }
+                        onLongClick = navController::backToMain,
+                        modifier = Modifier.padding(start = 12.dp)
+                    )
                 }
             },
             actions = {
@@ -289,7 +301,8 @@ fun ArtistSongsScreen(
                     }
                 }
             },
-            scrollBehavior = scrollBehavior
+            scrollBehavior = scrollBehavior,
+            colors = immersiveTopBarColors(tint, solid = !transparentAppBar)
         )
 
         HideOnScrollFAB(
