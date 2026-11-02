@@ -1185,31 +1185,7 @@ private fun LazyGridScope.songsContent(
         val song = songs[index]
         val active = song.id == activeSongId
         val subtitle = song.artists.joinToString { it.name }
-        val cover: @Composable () -> Unit = {
-            Box(modifier = Modifier.fillMaxSize()) {
-                AsyncImage(
-                    model = song.thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                if (active) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.40f))
-                    ) {
-                        Icon(
-                            painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
+        val cover: @Composable () -> Unit = { SongCover(song.thumbnailUrl, active, isPlaying) }
         if (isGrid) {
             GlassCoverCard(
                 title = song.song.title,

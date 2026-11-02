@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -130,6 +131,9 @@ fun Modifier.glassAmbient(): Modifier {
     }
 }
 
+/** Set to true on screens with a dark backdrop (e.g. the immersive artist page) regardless of the app theme. */
+val LocalGlassDark = compositionLocalOf<Boolean?> { null }
+
 /**
  * "Liquid glass" panel: a translucent tinted body with a soft specular highlight in the top-left corner,
  * light pooling along the bottom edge and a bright rim that fades through the middle and comes back
@@ -142,7 +146,7 @@ fun Modifier.liquidGlass(
     tintAlpha: Float = 0.45f,
     elevation: Dp = 8.dp,
 ): Modifier {
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val dark = LocalGlassDark.current ?: (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
     val rim = Brush.linearGradient(
         0f to Color.White.copy(alpha = if (dark) 0.60f else 0.95f),
         0.38f to Color.White.copy(alpha = if (dark) 0.05f else 0.18f),

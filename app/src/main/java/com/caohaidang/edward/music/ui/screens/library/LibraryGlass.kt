@@ -159,6 +159,8 @@ internal fun GlassRow(
     typeLabel: String? = null,
     coverSize: Dp = 64.dp,
     highlighted: Boolean = false,
+    tintAlpha: Float = 0.55f,
+    activeTintAlpha: Float = 0.85f,
     trailing: @Composable () -> Unit = {},
     cover: @Composable () -> Unit,
 ) {
@@ -170,7 +172,7 @@ internal fun GlassRow(
             .liquidGlass(
                 shape = RoundedCornerShape(26.dp),
                 tint = colors.container,
-                tintAlpha = if (highlighted) 0.85f else 0.55f
+                tintAlpha = if (highlighted) activeTintAlpha else tintAlpha
             )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp)
@@ -228,13 +230,16 @@ internal fun GlassCoverCard(
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    tintAlpha: Float = 0.5f,
+    captionAlpha: Float = 0.72f,
+    activeCaptionAlpha: Float = 0.9f,
     cover: @Composable () -> Unit,
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .liquidGlass(RoundedCornerShape(26.dp), tint = colors.container, tintAlpha = 0.5f)
+            .liquidGlass(RoundedCornerShape(26.dp), tint = colors.container, tintAlpha = tintAlpha)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(modifier = Modifier.fillMaxSize()) { cover() }
@@ -247,7 +252,7 @@ internal fun GlassCoverCard(
                 .liquidGlass(
                     shape = RoundedCornerShape(20.dp),
                     tint = colors.container,
-                    tintAlpha = if (highlighted) 0.9f else 0.72f,
+                    tintAlpha = if (highlighted) activeCaptionAlpha else captionAlpha,
                     elevation = 0.dp
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -370,6 +375,34 @@ internal fun CreatePlaylistCard(colors: TileColors, onClick: () -> Unit, modifie
                 color = colors.content,
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+/** Square song cover; the playing song gets a dimmed overlay with a play / pause icon. */
+@Composable
+internal fun SongCover(url: String?, active: Boolean, playing: Boolean) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = url,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        if (active) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.40f))
+            ) {
+                Icon(
+                    painter = painterResource(if (playing) R.drawable.pause else R.drawable.play),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
