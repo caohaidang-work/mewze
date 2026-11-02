@@ -60,6 +60,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.Shape
+import androidx.media3.exoplayer.offline.Download
+import com.caohaidang.edward.music.LocalDownloadUtil
+import com.caohaidang.edward.music.constants.ArtistSortType
+import com.caohaidang.edward.music.ui.utils.formatFileSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -254,36 +261,269 @@ private fun SectionHeader(
     }
 }
 
+/** Rounded cover used in the stacked collages; falls back to a flat tone while the image is missing. */
 @Composable
-private fun HubRow(@androidx.annotation.DrawableRes icon: Int, label: String, onClick: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+private fun StackCover(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(18.dp)) {
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        if (url != null) {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+/** Big "Yêu thích" tile: count, play / shuffle buttons and a tilted stack of covers. */
+@Composable
+private fun LibraryHero(
+    count: Int,
+    covers: List<String?>,
+    onClick: () -> Unit,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(scheme.primaryContainer)
+            .clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(start = 20.dp, top = 18.dp)) {
+            Text(
+                text = "Yêu thích",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = scheme.onPrimaryContainer
+            )
+            Text(
+                text = "$count bài hát",
+                style = MaterialTheme.typography.labelLarge,
+                color = scheme.onPrimaryContainer
+            )
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .height(44.dp)
+                    .clip(CircleShape)
+                    .background(scheme.onPrimaryContainer)
+                    .clickable(onClick = onPlay)
+                    .padding(start = 14.dp, end = 18.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.play),
+                    contentDescription = null,
+                    tint = scheme.primaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Phát",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.primaryContainer
+                )
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(scheme.onPrimaryContainer.copy(alpha = 0.14f))
+                    .clickable(onClick = onShuffle)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.shuffle),
+                    contentDescription = "Phát ngẫu nhiên",
+                    tint = scheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        val tilts = listOf(-12f, -4f, 8f)
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 20.dp)
+                .size(width = 150.dp, height = 110.dp)
+        ) {
+            covers.take(3).ifEmpty { listOf(null, null, null) }.forEachIndexed { i, url ->
+                StackCover(
+                    url = url,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = (i * 30).dp, y = ((i % 2) * 8).dp)
+                        .size(84.dp)
+                        .rotate(tilts[i % tilts.size])
+                )
+            }
+        }
+    }
+}
+
+/** Small square tile with an icon on top and title / subtitle at the bottom. */
+@Composable
+private fun BentoTile(
+    @androidx.annotation.DrawableRes icon: Int,
+    title: String,
+    subtitle: String,
+    container: Color,
+    content: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.SpaceBetween,
+        modifier = modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(content)
         ) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                painter = painterResource(R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = container,
+                modifier = Modifier.size(22.dp)
             )
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 60.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = content,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = content.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/** Wide strip used for "Thống kê". */
+@Composable
+private fun BentoStrip(
+    @androidx.annotation.DrawableRes icon: Int,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(76.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(scheme.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = scheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = scheme.primary,
+            modifier = Modifier.size(28.dp)
         )
+    }
+}
+
+/** Collection card (Playlist / Nghệ sĩ / Album) with a small stack of covers in the corner. */
+@Composable
+private fun CollectionCard(
+    title: String,
+    subtitle: String,
+    covers: List<String?>,
+    circle: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape: Shape = if (circle) CircleShape else RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(scheme.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 14.dp, end = 12.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = scheme.onSurfaceVariant
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 14.dp, end = 14.dp)
+                .size(width = 90.dp, height = 52.dp)
+        ) {
+            covers.take(3).ifEmpty { listOf(null, null) }.forEachIndexed { i, url ->
+                StackCover(
+                    url = url,
+                    shape = shape,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-(i * 26)).dp)
+                        .size(52.dp)
+                )
+            }
+        }
     }
 }
 
@@ -308,6 +548,15 @@ fun UnifiedLibraryScreen(
         .collectAsState(initial = emptyList())
     val playlists by remember(database) { database.playlists(PlaylistSortType.CREATE_DATE, true) }
         .collectAsState(initial = emptyList())
+    val artists by remember(database) { database.artists(ArtistSortType.CREATE_DATE, true) }
+        .collectAsState(initial = emptyList())
+
+    val downloadUtil = LocalDownloadUtil.current
+    val downloads by downloadUtil.downloads.collectAsState()
+    val downloadedStats = remember(downloads) {
+        val done = downloads.values.filter { it.state == Download.STATE_COMPLETED }
+        done.size to done.sumOf { it.bytesDownloaded }
+    }
 
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -400,12 +649,92 @@ fun UnifiedLibraryScreen(
             }
         }
 
-        item(key = "hub", span = { GridItemSpan(maxLineSpan) }) {
-            Column {
-                HubRow(R.drawable.queue_music, "Playlist") { navController.navigate(Screens.Playlists.route) }
-                HubRow(R.drawable.artist, "Nghệ sĩ") { navController.navigate(Screens.Artists.route) }
-                HubRow(R.drawable.music_note, "Bài hát") { navController.navigate(Screens.Songs.route) }
-                HubRow(R.drawable.album, "Album") { navController.navigate(Screens.Albums.route) }
+        item(key = "bento", span = { GridItemSpan(maxLineSpan) }) {
+            val scheme = MaterialTheme.colorScheme
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                LibraryHero(
+                    count = likedSongs.size,
+                    covers = likedSongs.map { it.thumbnailUrl },
+                    onClick = { navController.navigate(Screens.Songs.route) },
+                    onPlay = { if (likedSongs.isNotEmpty()) playSongs(likedSongs, 0) },
+                    onShuffle = { if (likedSongs.isNotEmpty()) playSongs(likedSongs.shuffled(), 0) }
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    BentoTile(
+                        icon = R.drawable.download,
+                        title = "Đã tải xuống",
+                        subtitle = "${downloadedStats.first} bài · ${formatFileSize(downloadedStats.second)}",
+                        container = scheme.tertiaryContainer,
+                        content = scheme.onTertiaryContainer,
+                        modifier = Modifier.weight(1f).height(124.dp),
+                        onClick = { navController.navigate("downloaded") }
+                    )
+                    BentoTile(
+                        icon = R.drawable.history,
+                        title = "Lịch sử nghe",
+                        subtitle = "Bài đã nghe gần đây",
+                        container = scheme.secondaryContainer,
+                        content = scheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f).height(124.dp),
+                        onClick = { navController.navigate("history") }
+                    )
+                }
+                BentoStrip(
+                    icon = R.drawable.trending_up,
+                    title = "Thống kê",
+                    subtitle = "Xem bạn đã nghe gì",
+                    onClick = { navController.navigate("stats") }
+                )
+            }
+        }
+
+        item(key = "collections_title", span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                text = "Bộ sưu tập",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 6.dp)
+            )
+        }
+
+        item(key = "collections", span = { GridItemSpan(maxLineSpan) }) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CollectionCard(
+                        title = "Playlist",
+                        subtitle = "${playlists.size} playlist",
+                        covers = playlists.mapNotNull { it.displayThumbnails.firstOrNull() },
+                        circle = false,
+                        modifier = Modifier.weight(1f).height(128.dp),
+                        onClick = { navController.navigate(Screens.Playlists.route) }
+                    )
+                    CollectionCard(
+                        title = "Nghệ sĩ",
+                        subtitle = "${artists.size} nghệ sĩ",
+                        covers = artists.mapNotNull { it.artist.thumbnailUrl },
+                        circle = true,
+                        modifier = Modifier.weight(1f).height(128.dp),
+                        onClick = { navController.navigate(Screens.Artists.route) }
+                    )
+                }
+                CollectionCard(
+                    title = "Album",
+                    subtitle = "${likedAlbums.size} album",
+                    covers = likedAlbums.mapNotNull { it.thumbnailUrl },
+                    circle = false,
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    onClick = { navController.navigate(Screens.Albums.route) }
+                )
             }
         }
 
@@ -427,11 +756,10 @@ fun UnifiedLibraryScreen(
                 is Song -> "recent_song_${item.id}"
                 else -> "recent_$i"
             }
-        }) { index ->
+        }, span = { GridItemSpan(maxLineSpan) }) { index ->
             when (val item = recent[index]) {
-                is Playlist -> PlaylistGridItem(
+                is Playlist -> PlaylistListItem(
                     playlist = item,
-                    fillMaxWidth = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
@@ -449,12 +777,10 @@ fun UnifiedLibraryScreen(
                         )
                 )
 
-                is Album -> AlbumGridItem(
+                is Album -> AlbumListItem(
                     album = item,
                     isActive = item.id == mediaMetadata?.album?.id,
                     isPlaying = isPlaying,
-                    coroutineScope = coroutineScope,
-                    fillMaxWidth = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
@@ -472,11 +798,10 @@ fun UnifiedLibraryScreen(
                         )
                 )
 
-                is Song -> SongGridItem(
+                is Song -> SongListItem(
                     song = item,
                     isActive = item.id == mediaMetadata?.id,
                     isPlaying = isPlaying,
-                    fillMaxWidth = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
