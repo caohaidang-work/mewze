@@ -135,7 +135,7 @@ fun GlassIconButton(
 @Composable
 fun GlassPlaylistHeader(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     tint: Color?,
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
@@ -206,12 +206,14 @@ fun GlassPlaylistHeader(
                 if (accentLine != null) {
                     CompositionLocalProvider(LocalContentColor provides accent) { accentLine() }
                 }
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.75f),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
         }
 
