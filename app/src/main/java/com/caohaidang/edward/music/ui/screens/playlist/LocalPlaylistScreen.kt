@@ -31,10 +31,10 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.TopAppBarDefaults
 import com.caohaidang.edward.music.constants.AppBarHeight
-import com.caohaidang.edward.music.ui.component.ImmersiveActionRow
-import com.caohaidang.edward.music.ui.component.ImmersiveCoverHeader
+import com.caohaidang.edward.music.ui.component.GlassIconButton
+import com.caohaidang.edward.music.ui.component.GlassPlaylistHeader
 import com.caohaidang.edward.music.ui.component.ImmersiveTheme
-import com.caohaidang.edward.music.ui.component.immersiveBackdrop
+import com.caohaidang.edward.music.ui.component.glassBackdrop
 import com.caohaidang.edward.music.ui.component.immersiveTopBarColors
 import com.caohaidang.edward.music.ui.component.rememberImageTint
 import com.caohaidang.edward.music.ui.component.MinimalSongListItem
@@ -328,14 +328,12 @@ fun LocalPlaylistScreen(
     val immersiveHeader = !isSearching && (playlist?.songCount ?: 0) > 0
 
     Box(
-        modifier = Modifier.fillMaxSize().immersiveBackdrop(tint)
+        modifier = Modifier.fillMaxSize().glassBackdrop(tint)
     ) {
         ImmersiveTheme {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).let {
-                if (immersiveHeader) it.add(WindowInsets(top = -WindowInsets.systemBars.asPaddingValues().calculateTopPadding() - AppBarHeight)) else it
-            }.asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
         ) {
             playlist?.let { playlist ->
                 if (playlist.songCount == 0) {
@@ -768,11 +766,20 @@ fun LocalPlaylistHeader(
         }
     }
 
-    ImmersiveCoverHeader(
+    GlassPlaylistHeader(
         title = playlist.playlist.name,
         tint = tint,
         subtitle = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount) +
                 " · " + makeTimeString(playlistLength * 1000L),
+        onCoverClick = { showCoverDialog = true },
+        onPlay = {
+            playerConnection.playQueue(
+                ListQueue(
+                    title = playlist.playlist.name,
+                    items = songs.map { it.song.toMediaItem() }
+                )
+            )
+        },
         cover = {
             if (playlist.displayThumbnails.size == 1) {
                 AsyncImage(
@@ -799,38 +806,76 @@ fun LocalPlaylistHeader(
             }
         },
         actions = {
-            ImmersiveActionRow(
-                playText = stringResource(R.string.play),
-                onPlay = {
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = playlist.playlist.name,
-                            items = songs.map { it.song.toMediaItem() }
-                        )
-                    )
-                },
-                onShuffle = {
+            GlassIconButton(
+                icon = R.drawable.shuffle,
+                contentDescription = stringResource(R.string.shuffle),
+                onClick = {
                     playerConnection.playQueue(
                         ListQueue(
                             title = playlist.playlist.name,
                             items = songs.shuffled().map { it.song.toMediaItem() }
                         )
                     )
-                },
-                trailingIcon = R.drawable.edit,
-                onToggleLike = onShowEditDialog,
+                }
             )
-        },
-        secondaryActions = {
-                    IconButton(onClick = { showCoverDialog = true }) {
-                        Icon(
-                            painter = painterResource(R.drawable.image),
-                            contentDescription = "Đổi ảnh bìa"
-                        )
+
+                    when (downloadState) {
+                        Download.STATE_COMPLETED -> {
+                            GlassIconButton(
+                                icon = R.drawable.offline,
+                                contentDescription = stringResource(R.string.remove_download),
+                                onClick = onShowRemoveDownloadDialog
+                            )
+                        }
+
+                        Download.STATE_DOWNLOADING -> {
+                            GlassIconButton(
+                                contentDescription = stringResource(R.string.downloading),
+                                onClick = {
+                                    songs.forEach { song ->
+                                        DownloadService.sendRemoveDownload(
+                                            context,
+                                            ExoDownloadService::class.java,
+                                            song.song.id,
+                                            false
+                                        )
+                                    }
+                                }
+                            ) {
+                                CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    color = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        else -> {
+                            GlassIconButton(
+                                icon = R.drawable.download,
+                                contentDescription = stringResource(R.string.playlist_download),
+                                onClick = {
+                                    songs.forEach { song ->
+                                        val downloadRequest = DownloadRequest.Builder(song.song.id, song.song.id.toUri())
+                                            .setCustomCacheKey(song.song.id)
+                                            .setData(song.song.song.title.toByteArray())
+                                            .build()
+                                        DownloadService.sendAddDownload(
+                                            context,
+                                            ExoDownloadService::class.java,
+                                            downloadRequest,
+                                            false
+                                        )
+                                    }
+                                }
+                            )
+                        }
                     }
 
                     if (playlist.playlist.browseId != null) {
-                        IconButton(
+                        GlassIconButton(
+                            icon = R.drawable.sync,
+                            contentDescription = stringResource(R.string.playlist_sync),
                             onClick = {
                                 scope.launch(Dispatchers.IO) {
                                     val playlistPage = YouTube.playlist(playlist.playlist.browseId).completed().getOrNull() ?: return@launch
@@ -851,83 +896,24 @@ fun LocalPlaylistHeader(
                                     snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
                                 }
                             }
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.sync),
-                                contentDescription = null
-                            )
-                        }
-                    }
-
-                    when (downloadState) {
-                        Download.STATE_COMPLETED -> {
-                            IconButton(
-                                onClick = onShowRemoveDownloadDialog
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.offline),
-                                    contentDescription = null
-                                )
-                            }
-                        }
-
-                        Download.STATE_DOWNLOADING -> {
-                            IconButton(
-                                onClick = {
-                                    songs.forEach { song ->
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            song.song.id,
-                                            false
-                                        )
-                                    }
-                                }
-                            ) {
-                                CircularProgressIndicator(
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                        else -> {
-                            IconButton(
-                                onClick = {
-                                    songs.forEach { song ->
-                                        val downloadRequest = DownloadRequest.Builder(song.song.id, song.song.id.toUri())
-                                            .setCustomCacheKey(song.song.id)
-                                            .setData(song.song.song.title.toByteArray())
-                                            .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false
-                                        )
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.download),
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    }
-
-                    IconButton(
-                        onClick = {
-                            playerConnection.addToQueue(
-                                items = songs.map { it.song.toMediaItem() }
-                            )
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.queue_music),
-                            contentDescription = null
                         )
                     }
+
+            GlassIconButton(
+                icon = R.drawable.queue_music,
+                contentDescription = stringResource(R.string.add_to_queue),
+                onClick = {
+                    playerConnection.addToQueue(
+                        items = songs.map { it.song.toMediaItem() }
+                    )
+                }
+            )
+
+            GlassIconButton(
+                icon = R.drawable.edit,
+                contentDescription = stringResource(R.string.edit),
+                onClick = onShowEditDialog
+            )
         },
         modifier = modifier
     )

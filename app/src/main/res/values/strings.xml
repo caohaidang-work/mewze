@@ -406,4 +406,8 @@
     <string name="update_later">Later</string>
     <string name="update_cancel">Cancel</string>
     <string name="update_allow_install">Allow Mewze to install apps, then tap Install again</string>
+    <string name="playlist_label">Playlist</string>
+    <string name="playlist_change_cover">Change cover</string>
+    <string name="playlist_download">Download</string>
+    <string name="playlist_sync">Sync</string>
 </resources>
