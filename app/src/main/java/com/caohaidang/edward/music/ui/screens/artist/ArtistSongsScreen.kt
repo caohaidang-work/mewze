@@ -62,7 +62,8 @@ import com.caohaidang.edward.music.ui.component.IconButton
 import com.caohaidang.edward.music.ui.component.LocalMenuState
 import com.caohaidang.edward.music.ui.component.liquidBackdrop
 import com.caohaidang.edward.music.ui.screens.library.BentoTone
-import com.caohaidang.edward.music.ui.screens.library.GlassIconButton
+import com.caohaidang.edward.music.ui.screens.library.FlatMoreButton
+import com.caohaidang.edward.music.ui.screens.library.FlatSongRow
 import com.caohaidang.edward.music.ui.screens.library.tileColors
 import com.caohaidang.edward.music.utils.joinByBullet
 import com.caohaidang.edward.music.utils.makeTimeString
@@ -190,14 +191,10 @@ fun ArtistSongsScreen(
                     }
                 }
 
-                GlassPageSongRow(
+                FlatSongRow(
                     title = song.song.title,
-                    subtitle = joinByBullet(
-                        song.artists.joinToString { it.name },
-                        makeTimeString(song.song.duration * 1000L)
-                    ).orEmpty(),
+                    subtitle = song.artists.joinToString { it.name },
                     thumbnailUrl = song.song.thumbnailUrl,
-                    colors = colors,
                     active = song.id == mediaMetadata?.id,
                     playing = isPlaying,
                     selected = inSelectMode && song.id in selection,
@@ -230,13 +227,7 @@ fun ArtistSongsScreen(
                                 onCheckedChange = onCheckedChange
                             )
                         } else {
-                            GlassIconButton(
-                                icon = R.drawable.more_vert,
-                                iconColor = colors.content,
-                                fill = colors.content,
-                                fillAlpha = 0.12f,
-                                onClick = { showMenu() }
-                            )
+                            FlatMoreButton(onClick = { showMenu() })
                         }
                     },
                     modifier = Modifier.animateItem()

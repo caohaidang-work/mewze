@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.ui.component.PlaylistThumbnail
@@ -404,5 +407,79 @@ internal fun SongCover(url: String?, active: Boolean, playing: Boolean) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Flat song row (no card): rounded cover, bold title, muted artist line and a plain "more" button.
+ * Colours follow the theme, so it reads on [com.caohaidang.edward.music.ui.component.liquidBackdrop]
+ * in both light and dark mode. [trailing] is usually [FlatMoreButton], or a checkbox while selecting.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun FlatSongRow(
+    title: String,
+    subtitle: String,
+    thumbnailUrl: String?,
+    active: Boolean,
+    playing: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    trailing: @Composable () -> Unit = {},
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(76.dp)
+            .background(if (selected) scheme.onSurface.copy(alpha = 0.10f) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(start = 20.dp, end = 6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(scheme.onSurface.copy(alpha = 0.08f))
+        ) {
+            SongCover(url = thumbnailUrl, active = active, playing = playing)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    fontSize = 13.sp,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        trailing()
+    }
+}
+
+@Composable
+internal fun FlatMoreButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            painter = painterResource(R.drawable.more_horiz),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface
+        )
     }
 }

@@ -1199,24 +1199,15 @@ private fun LazyGridScope.songsContent(
                 cover = cover
             )
         } else {
-            GlassRow(
+            FlatSongRow(
                 title = song.song.title,
                 subtitle = subtitle,
-                colors = colors,
-                coverSize = SectionCoverSize,
-                highlighted = active,
+                thumbnailUrl = song.thumbnailUrl,
+                active = active,
+                playing = isPlaying,
                 onClick = { onPlay(song, index) },
                 onLongClick = { onLongPress(song) },
-                trailing = {
-                    GlassIconButton(
-                        icon = R.drawable.more_vert,
-                        iconColor = colors.content,
-                        fill = colors.content,
-                        fillAlpha = 0.12f,
-                        onClick = { onOptions(song) }
-                    )
-                },
-                cover = cover
+                trailing = { FlatMoreButton(onClick = { onOptions(song) }) }
             )
         }
     }

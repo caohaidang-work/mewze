@@ -69,6 +69,8 @@ import com.caohaidang.edward.music.ui.component.IconButton
 import com.caohaidang.edward.music.ui.component.LocalMenuState
 import com.caohaidang.edward.music.ui.component.liquidBackdrop
 import com.caohaidang.edward.music.ui.screens.library.BentoTone
+import com.caohaidang.edward.music.ui.screens.library.FlatMoreButton
+import com.caohaidang.edward.music.ui.screens.library.FlatSongRow
 import com.caohaidang.edward.music.ui.screens.library.GlassCoverCard
 import com.caohaidang.edward.music.ui.screens.library.GlassIconButton
 import com.caohaidang.edward.music.ui.screens.library.SongCover
@@ -216,15 +218,13 @@ fun ArtistItemsScreen(
                     }
                 }
 
-                GlassRow(
+                FlatSongRow(
                     title = song.title,
-                    subtitle = joinByBullet(
-                        song.artists.joinToString { it.name },
-                        makeTimeString(song.duration?.times(1000L))
-                    ),
-                    colors = songColors,
-                    coverSize = 60.dp,
-                    highlighted = mediaMetadata?.id == song.id || (inSelectMode && song.id in selection),
+                    subtitle = song.artists.joinToString { it.name },
+                    thumbnailUrl = song.thumbnail.resize(544, 544),
+                    active = mediaMetadata?.id == song.id,
+                    playing = isPlaying,
+                    selected = inSelectMode && song.id in selection,
                     onClick = {
                         if (inSelectMode) {
                             onCheckedChange(song.id !in selection)
@@ -248,21 +248,8 @@ fun ArtistItemsScreen(
                                 onCheckedChange = onCheckedChange
                             )
                         } else {
-                            GlassIconButton(
-                                icon = R.drawable.more_vert,
-                                iconColor = songColors.content,
-                                fill = songColors.content,
-                                fillAlpha = 0.12f,
-                                onClick = { showItemMenu(song) }
-                            )
+                            FlatMoreButton(onClick = { showItemMenu(song) })
                         }
-                    },
-                    cover = {
-                        SongCover(
-                            url = song.thumbnail.resize(544, 544),
-                            active = mediaMetadata?.id == song.id,
-                            playing = isPlaying
-                        )
                     },
                     modifier = Modifier.animateItem()
                 )
