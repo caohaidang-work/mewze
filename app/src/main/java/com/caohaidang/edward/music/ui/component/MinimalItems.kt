@@ -36,10 +36,11 @@ import com.caohaidang.edward.music.LocalDownloadUtil
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.db.entities.Song
 
-private val MinimalRowHeight = 64.dp
-private val MinimalThumbSize = 52.dp
-private val MinimalIndexWidth = 28.dp
-private val MinimalStartPadding = 16.dp
+private val MinimalRowHeight = 76.dp
+internal val MinimalThumbSize = 60.dp
+internal val MinimalThumbRadius = 16.dp
+internal val MinimalIndexWidth = 28.dp
+private val MinimalStartPadding = 20.dp
 private val MinimalGap = 14.dp
 
 @Composable
@@ -53,21 +54,11 @@ fun MinimalListItem(
     badges: @Composable RowScope.() -> Unit = {},
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val divider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .height(MinimalRowHeight)
-            .drawBehind {
-                val startX = (MinimalStartPadding + leadingWidth + MinimalGap).toPx()
-                drawLine(
-                    color = divider,
-                    start = Offset(startX, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 1f
-                )
-            }
-            .padding(start = MinimalStartPadding, end = 4.dp)
+            .padding(start = MinimalStartPadding, end = 6.dp)
     ) {
         Box(Modifier.width(leadingWidth), contentAlignment = Alignment.Center) { leading() }
         Column(
@@ -78,8 +69,8 @@ fun MinimalListItem(
         ) {
             Text(
                 text = title,
-                fontSize = 17.sp,
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -87,8 +78,9 @@ fun MinimalListItem(
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -143,7 +135,7 @@ fun MinimalSongListItem(
                 albumIndex = albumIndex,
                 isActive = isActive,
                 isPlaying = isPlaying,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(MinimalThumbRadius),
                 modifier = Modifier.size(if (albumIndex != null) MinimalIndexWidth else MinimalThumbSize)
             )
         },
@@ -177,7 +169,7 @@ fun MinimalYouTubeListItem(
                 thumbnailUrl = item.thumbnail,
                 isActive = isActive,
                 isPlaying = isPlaying,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(MinimalThumbRadius),
                 modifier = Modifier.size(MinimalThumbSize)
             )
         },

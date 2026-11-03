@@ -31,11 +31,10 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.layout.ContentScale
 import com.caohaidang.edward.music.constants.AppBarHeight
-import com.caohaidang.edward.music.ui.component.GlassCircleButton
-import com.caohaidang.edward.music.ui.component.ImmersiveActionRow
-import com.caohaidang.edward.music.ui.component.ImmersiveCoverHeader
+import com.caohaidang.edward.music.ui.component.GlassIconButton
+import com.caohaidang.edward.music.ui.component.GlassPlaylistHeader
 import com.caohaidang.edward.music.ui.component.ImmersiveTheme
-import com.caohaidang.edward.music.ui.component.immersiveBackdrop
+import com.caohaidang.edward.music.ui.component.glassBackdrop
 import com.caohaidang.edward.music.ui.component.immersiveTopBarColors
 import com.caohaidang.edward.music.ui.component.rememberImageTint
 import com.caohaidang.edward.music.ui.component.MinimalYouTubeListItem
@@ -200,23 +199,26 @@ fun OnlinePlaylistScreen(
     val immersiveHeader = !isSearching && playlist != null
 
     Box(
-        modifier = Modifier.fillMaxSize().immersiveBackdrop(tint)
+        modifier = Modifier.fillMaxSize().glassBackdrop(tint)
     ) {
         ImmersiveTheme {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).let {
-                if (immersiveHeader) it.add(WindowInsets(top = -WindowInsets.systemBars.asPaddingValues().calculateTopPadding() - AppBarHeight)) else it
-            }.asPaddingValues()
+            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues()
         ) {
             playlist.let { playlist ->
                 if (playlist != null) {
                     if (!isSearching) {
                         item(key = "header") {
-                            ImmersiveCoverHeader(
+                            GlassPlaylistHeader(
                                 title = playlist.title,
                                 tint = tint,
                                 subtitle = playlist.songCountText,
+                                onPlay = {
+                                    playerConnection.playQueue(
+                                        YouTubeQueue(playlist.playEndpoint ?: playlist.shuffleEndpoint)
+                                    )
+                                },
                                 accentLine = playlist.author?.let { artist ->
                                     {
                                         Text(
@@ -230,7 +232,7 @@ fun OnlinePlaylistScreen(
                                                     append(artist.name)
                                                 }
                                             },
-                                            style = MaterialTheme.typography.titleLarge,
+                                            style = MaterialTheme.typography.titleSmall,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -245,18 +247,24 @@ fun OnlinePlaylistScreen(
                                     )
                                 },
                                 actions = {
-                                    ImmersiveActionRow(
-                                        playText = stringResource(R.string.play),
-                                        onPlay = {
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(playlist.playEndpoint ?: playlist.shuffleEndpoint)
-                                            )
-                                        },
-                                        onShuffle = {
+                                    GlassIconButton(
+                                        icon = R.drawable.shuffle,
+                                        contentDescription = stringResource(R.string.shuffle),
+                                        onClick = {
                                             playerConnection.playQueue(YouTubeQueue(playlist.shuffleEndpoint))
-                                        },
-                                        trailingIcon = R.drawable.input,
-                                        onToggleLike = {
+                                        }
+                                    )
+                                    playlist.radioEndpoint?.let { radioEndpoint ->
+                                        GlassIconButton(
+                                            icon = R.drawable.radio,
+                                            contentDescription = stringResource(R.string.start_radio),
+                                            onClick = { playerConnection.playQueue(YouTubeQueue(radioEndpoint)) }
+                                        )
+                                    }
+                                    GlassIconButton(
+                                        icon = R.drawable.input,
+                                        contentDescription = stringResource(R.string.import_playlist),
+                                        onClick = {
                                             database.transaction {
                                                 val playlistEntity = PlaylistEntity(
                                                     name = playlist.title,
@@ -277,16 +285,8 @@ fun OnlinePlaylistScreen(
                                                     snackbarHostState.showSnackbar(context.getString(R.string.playlist_imported))
                                                 }
                                             }
-                                        },
+                                        }
                                     )
-                                },
-                                secondaryActions = playlist.radioEndpoint?.let { radioEndpoint ->
-                                    {
-                                        GlassCircleButton(
-                                            icon = R.drawable.radio,
-                                            onClick = { playerConnection.playQueue(YouTubeQueue(radioEndpoint)) },
-                                        )
-                                    }
                                 },
                                 modifier = Modifier.animateItem()
                             )

@@ -265,23 +265,22 @@ fun SongListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
-) = ListItem(
+) = MinimalListItem(
     title = song.song.title,
-    subtitle = joinByBullet(
-        song.artists.joinToString { it.name },
-        makeTimeString(song.song.duration * 1000L)
-    ),
-    badges = badges,
-    thumbnailContent = {
+    subtitle = song.artists.joinToString { it.name },
+    isActive = isActive,
+    leadingWidth = if (albumIndex != null) MinimalIndexWidth else MinimalThumbSize,
+    leading = {
         ItemThumbnail(
             thumbnailUrl = song.song.thumbnailUrl,
             albumIndex = albumIndex,
             isActive = isActive,
             isPlaying = isPlaying,
-            shape = RoundedCornerShape(ThumbnailCornerRadius),
-            modifier = Modifier.size(ListThumbnailSize)
+            shape = RoundedCornerShape(MinimalThumbRadius),
+            modifier = Modifier.size(if (albumIndex != null) MinimalIndexWidth else MinimalThumbSize)
         )
     },
+    badges = badges,
     trailingContent = trailingContent,
     modifier = modifier
 )
@@ -647,25 +646,27 @@ fun YouTubeListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
-) = ListItem(
+) = MinimalListItem(
     title = item.title,
     subtitle = when (item) {
-        is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
+        is SongItem -> item.artists.joinToString { it.name }
         is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
         is ArtistItem -> null
         is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
     },
-    badges = badges,
-    thumbnailContent = {
+    isActive = isActive,
+    leadingWidth = if (albumIndex != null) MinimalIndexWidth else MinimalThumbSize,
+    leading = {
         ItemThumbnail(
             thumbnailUrl = item.thumbnail,
             albumIndex = albumIndex,
             isActive = isActive,
             isPlaying = isPlaying,
-            shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
-            modifier = Modifier.size(ListThumbnailSize)
+            shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(MinimalThumbRadius),
+            modifier = Modifier.size(if (albumIndex != null) MinimalIndexWidth else MinimalThumbSize)
         )
     },
+    badges = badges,
     trailingContent = trailingContent,
     modifier = modifier
 )

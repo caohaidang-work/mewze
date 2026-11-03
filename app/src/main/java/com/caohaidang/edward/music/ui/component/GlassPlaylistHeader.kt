@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.Alignment
@@ -135,9 +137,10 @@ fun GlassPlaylistHeader(
     title: String,
     subtitle: String,
     tint: Color?,
-    onCoverClick: () -> Unit,
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
+    onCoverClick: (() -> Unit)? = null,
+    accentLine: (@Composable () -> Unit)? = null,
     cover: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
@@ -159,10 +162,14 @@ fun GlassPlaylistHeader(
                     .shadow(18.dp, coverShape, clip = false)
                     .clip(coverShape)
                     .background(Color.White.copy(alpha = 0.2f))
-                    .clickable(role = Role.Button, onClickLabel = changeCover, onClick = onCoverClick)
+                    .then(
+                        if (onCoverClick != null)
+                            Modifier.clickable(role = Role.Button, onClickLabel = changeCover, onClick = onCoverClick)
+                        else Modifier
+                    )
             ) {
                 cover()
-                Box(
+                if (onCoverClick != null) Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -196,6 +203,9 @@ fun GlassPlaylistHeader(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                if (accentLine != null) {
+                    CompositionLocalProvider(LocalContentColor provides accent) { accentLine() }
+                }
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
