@@ -108,9 +108,6 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import com.caohaidang.edward.innertube.YouTube
-import com.caohaidang.edward.innertube.models.SongItem
-import com.caohaidang.edward.innertube.utils.completed
 import com.caohaidang.edward.music.LocalDatabase
 import com.caohaidang.edward.music.LocalDownloadUtil
 import com.caohaidang.edward.music.LocalPlayerAwareWindowInsets
@@ -124,11 +121,9 @@ import com.caohaidang.edward.music.constants.PlaylistSongSortTypeKey
 import com.caohaidang.edward.music.constants.ThumbnailCornerRadius
 import com.caohaidang.edward.music.db.entities.Playlist
 import com.caohaidang.edward.music.db.entities.PlaylistSong
-import com.caohaidang.edward.music.db.entities.PlaylistSongMap
 import com.caohaidang.edward.music.extensions.move
 import com.caohaidang.edward.music.extensions.toMediaItem
 import com.caohaidang.edward.music.extensions.togglePlayPause
-import com.caohaidang.edward.music.models.toMediaMetadata
 import com.caohaidang.edward.music.playback.ExoDownloadService
 import com.caohaidang.edward.music.playback.queues.ListQueue
 import com.caohaidang.edward.music.ui.component.AutoResizeText
@@ -878,43 +873,6 @@ fun LocalPlaylistHeader(
                             )
                         }
                     }
-
-                    if (playlist.playlist.browseId != null) {
-                        GlassIconButton(
-                            icon = R.drawable.sync,
-                            contentDescription = stringResource(R.string.playlist_sync),
-                            onClick = {
-                                scope.launch(Dispatchers.IO) {
-                                    val playlistPage = YouTube.playlist(playlist.playlist.browseId).completed().getOrNull() ?: return@launch
-                                    database.transaction {
-                                        clearPlaylist(playlist.id)
-                                        playlistPage.songs
-                                            .map(SongItem::toMediaMetadata)
-                                            .onEach(::insert)
-                                            .mapIndexed { position, song ->
-                                                PlaylistSongMap(
-                                                    songId = song.id,
-                                                    playlistId = playlist.id,
-                                                    position = position
-                                                )
-                                            }
-                                            .forEach(::insert)
-                                    }
-                                    snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
-                                }
-                            }
-                        )
-                    }
-
-            GlassIconButton(
-                icon = R.drawable.queue_music,
-                contentDescription = stringResource(R.string.add_to_queue),
-                onClick = {
-                    playerConnection.addToQueue(
-                        items = songs.map { it.song.toMediaItem() }
-                    )
-                }
-            )
 
             GlassIconButton(
                 icon = R.drawable.edit,
