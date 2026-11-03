@@ -34,7 +34,9 @@ import com.caohaidang.edward.music.constants.AppBarHeight
 import com.caohaidang.edward.music.ui.component.GlassIconButton
 import com.caohaidang.edward.music.ui.component.GlassPlaylistHeader
 import com.caohaidang.edward.music.ui.component.ImmersiveTheme
-import com.caohaidang.edward.music.ui.component.glassBackdrop
+import com.caohaidang.edward.music.ui.component.liquidBackdrop
+import com.caohaidang.edward.music.ui.screens.library.BentoTone
+import com.caohaidang.edward.music.ui.screens.library.tileColors
 import com.caohaidang.edward.music.ui.component.immersiveTopBarColors
 import com.caohaidang.edward.music.ui.component.rememberImageTint
 import com.caohaidang.edward.music.ui.component.MinimalSongListItem
@@ -324,13 +326,12 @@ fun LocalPlaylistScreen(
         )
     }
 
-    val tint = rememberImageTint(playlist?.displayThumbnails?.firstOrNull())
     val immersiveHeader = !isSearching && (playlist?.songCount ?: 0) > 0
 
     Box(
-        modifier = Modifier.fillMaxSize().glassBackdrop(tint)
+        modifier = Modifier.fillMaxSize().liquidBackdrop()
     ) {
-        ImmersiveTheme {
+        run {
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
@@ -353,7 +354,6 @@ fun LocalPlaylistScreen(
                                 onShowEditDialog = { showEditDialog = true },
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 snackbarHostState = snackbarHostState,
-                                tint = tint,
                                 modifier = Modifier.animateItem()
                             )
                         }
@@ -536,6 +536,10 @@ fun LocalPlaylistScreen(
         }
         }
 
+        val topBarColor = if (showTopBarTitle || inSelectMode || isSearching) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+        } else Color.Transparent
+
         TopAppBar(
             title = {
                 if (inSelectMode) {
@@ -662,8 +666,10 @@ fun LocalPlaylistScreen(
                 }
             },
             scrollBehavior = scrollBehavior,
-            colors = if (isSearching || !immersiveHeader) TopAppBarDefaults.topAppBarColors()
-            else immersiveTopBarColors(tint, solid = showTopBarTitle || inSelectMode)
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = topBarColor,
+                scrolledContainerColor = topBarColor
+            )
         )
 
         SnackbarHost(
@@ -682,7 +688,6 @@ fun LocalPlaylistHeader(
     onShowEditDialog: () -> Unit,
     onShowRemoveDownloadDialog: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    tint: Color?,
     modifier: Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -766,9 +771,11 @@ fun LocalPlaylistHeader(
         }
     }
 
+    val tone = tileColors(BentoTone.PLAYLIST)
     GlassPlaylistHeader(
         title = playlist.playlist.name,
-        tint = tint,
+        playContainer = tone.container,
+        playContent = tone.content,
         subtitle = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount) +
                 " · " + makeTimeString(playlistLength * 1000L),
         onCoverClick = { showCoverDialog = true },

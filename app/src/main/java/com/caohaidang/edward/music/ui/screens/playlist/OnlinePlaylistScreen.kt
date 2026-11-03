@@ -34,7 +34,9 @@ import com.caohaidang.edward.music.constants.AppBarHeight
 import com.caohaidang.edward.music.ui.component.GlassIconButton
 import com.caohaidang.edward.music.ui.component.GlassPlaylistHeader
 import com.caohaidang.edward.music.ui.component.ImmersiveTheme
-import com.caohaidang.edward.music.ui.component.glassBackdrop
+import com.caohaidang.edward.music.ui.component.liquidBackdrop
+import com.caohaidang.edward.music.ui.screens.library.BentoTone
+import com.caohaidang.edward.music.ui.screens.library.tileColors
 import com.caohaidang.edward.music.ui.component.immersiveTopBarColors
 import com.caohaidang.edward.music.ui.component.rememberImageTint
 import com.caohaidang.edward.music.ui.component.MinimalYouTubeListItem
@@ -195,13 +197,12 @@ fun OnlinePlaylistScreen(
         BackHandler(onBack = onExitSelectionMode)
     }
 
-    val tint = rememberImageTint(playlist?.thumbnail)
     val immersiveHeader = !isSearching && playlist != null
 
     Box(
-        modifier = Modifier.fillMaxSize().glassBackdrop(tint)
+        modifier = Modifier.fillMaxSize().liquidBackdrop()
     ) {
-        ImmersiveTheme {
+        run {
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues()
@@ -212,7 +213,8 @@ fun OnlinePlaylistScreen(
                         item(key = "header") {
                             GlassPlaylistHeader(
                                 title = playlist.title,
-                                tint = tint,
+                                playContainer = tileColors(BentoTone.PLAYLIST).container,
+                                playContent = tileColors(BentoTone.PLAYLIST).content,
                                 subtitle = playlist.songCountText,
                                 onPlay = {
                                     playerConnection.playQueue(
@@ -402,6 +404,10 @@ fun OnlinePlaylistScreen(
         }
         }
 
+        val topBarColor = if (showTopBarTitle || inSelectMode || isSearching) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+        } else Color.Transparent
+
         TopAppBar(
             title = {
                 if (inSelectMode) {
@@ -529,8 +535,10 @@ fun OnlinePlaylistScreen(
                 }
             },
             scrollBehavior = scrollBehavior,
-            colors = if (isSearching || playlist == null) TopAppBarDefaults.topAppBarColors()
-            else immersiveTopBarColors(tint, solid = showTopBarTitle || inSelectMode)
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = topBarColor,
+                scrolledContainerColor = topBarColor
+            )
         )
 
         SnackbarHost(
