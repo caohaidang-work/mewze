@@ -31,19 +31,14 @@ import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
-import com.caohaidang.edward.innertube.YouTube
-import com.caohaidang.edward.innertube.models.SongItem
-import com.caohaidang.edward.innertube.utils.completed
 import com.caohaidang.edward.music.LocalDatabase
 import com.caohaidang.edward.music.LocalDownloadUtil
 import com.caohaidang.edward.music.LocalPlayerConnection
 import com.caohaidang.edward.music.R
 import com.caohaidang.edward.music.db.entities.Playlist
 import com.caohaidang.edward.music.db.entities.PlaylistSong
-import com.caohaidang.edward.music.db.entities.PlaylistSongMap
 import com.caohaidang.edward.music.db.entities.Song
 import com.caohaidang.edward.music.extensions.toMediaItem
-import com.caohaidang.edward.music.models.toMediaMetadata
 import com.caohaidang.edward.music.playback.ExoDownloadService
 import com.caohaidang.edward.music.playback.queues.ListQueue
 import com.caohaidang.edward.music.ui.component.DefaultDialog
@@ -54,8 +49,6 @@ import com.caohaidang.edward.music.ui.component.PlaylistListItem
 import com.caohaidang.edward.music.ui.component.TextFieldDialog
 import com.caohaidang.edward.music.utils.makeTimeString
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @Composable
 fun PlaylistMenu(
@@ -249,14 +242,6 @@ fun PlaylistMenu(
         }
 
         GridMenuItem(
-            icon = R.drawable.queue_music,
-            title = R.string.add_to_queue
-        ) {
-            onDismiss()
-            playerConnection.addToQueue(songs.map { it.toMediaItem() })
-        }
-
-        GridMenuItem(
             icon = R.drawable.edit,
             title = R.string.edit
         ) {
@@ -289,34 +274,6 @@ fun PlaylistMenu(
             title = R.string.delete
         ) {
             showDeletePlaylistDialog = true
-        }
-
-        if (playlist.playlist.browseId != null) {
-            GridMenuItem(
-                icon = R.drawable.sync,
-                title = R.string.action_sync
-            ) {
-                onDismiss()
-                coroutineScope.launch(Dispatchers.IO) {
-                    val playlistPage =
-                        YouTube.playlist(playlist.playlist.browseId).completed().getOrNull()
-                            ?: return@launch
-                    database.transaction {
-                        clearPlaylist(playlist.id)
-                        playlistPage.songs
-                            .map(SongItem::toMediaMetadata)
-                            .onEach(::insert)
-                            .mapIndexed { position, song ->
-                                PlaylistSongMap(
-                                    songId = song.id,
-                                    playlistId = playlist.id,
-                                    position = position
-                                )
-                            }
-                            .forEach(::insert)
-                    }
-                }
-            }
         }
     }
 }
